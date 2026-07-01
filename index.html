@@ -1,0 +1,657 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>MedStudy Hub — Интерактивная платформа для студентов-медиков</title>
+  <!-- Google Fonts: Outfit & Inter -->
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=Outfit:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+  <!-- MathJax for rendering LaTeX mathematical expressions -->
+  <script src="https://polyfill.io/v3/polyfill.min.js?features=es6"></script>
+  <script>
+    MathJax = {
+      tex: {
+        inlineMath: [['$', '$'], ['\\(', '\\)']],
+        displayMath: [['$$', '$$'], ['\\[', '\\]']]
+      }
+    };
+  </script>
+  <script id="MathJax-script" src="https://cdn.jsdelivr.net/npm/mathjax@3/es2021/es5/tex-mml-chtml.js"></script>
+  <!-- Stylesheets -->
+  <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+  <!-- ACCESS LOCK SCREEN -->
+  <div id="app-lock-screen" class="lock-screen-overlay">
+    <div class="lock-card glass-panel">
+      <div class="lock-header">
+        <span class="lock-icon">🔒</span>
+        <h2>Доступ ограничен</h2>
+        <p>Для входа на платформу MedStudy Hub введите код доступа.</p>
+      </div>
+      <div class="lock-body">
+        <input type="password" id="lock-password-input" placeholder="Код доступа..." autofocus>
+        <button id="lock-submit-btn">Войти</button>
+        <p id="lock-error-msg" class="lock-error hidden">❌ Неверный код доступа</p>
+      </div>
+    </div>
+  </div>
+
+  <div class="app-container">
+    <!-- Sidebar Navigation -->
+    <aside class="sidebar">
+      <div class="sidebar-header">
+        <span class="logo-icon">🩺</span>
+        <h1 class="logo-text">MedStudy<span>Hub</span></h1>
+      </div>
+      <nav class="sidebar-menu">
+        <a href="#dashboard" class="menu-item active" data-view="dashboard">
+          <span class="menu-icon">📊</span> Главная
+        </a>
+        <a href="#anatomy-3d" class="menu-item" data-view="anatomy-3d">
+          <span class="menu-icon">🧍</span> 3D-Анатомия
+        </a>
+        <a href="#systems" class="menu-item" data-view="systems">
+          <span class="menu-icon">🫁</span> По системам
+        </a>
+        <a href="#subjects" class="menu-item" data-view="subjects">
+          <span class="menu-icon">🦴</span> По предметам
+        </a>
+        <a href="#flashcards" class="menu-item" data-view="flashcards">
+          <span class="menu-icon">🎴</span> Карточки
+        </a>
+        <a href="#quizzes" class="menu-item" data-view="quizzes">
+          <span class="menu-icon">📝</span> Тесты
+        </a>
+        <a href="#cases" class="menu-item" data-view="cases">
+          <span class="menu-icon">🏥</span> Клинические кейсы
+        </a>
+        <a href="#library" class="menu-item" data-view="library">
+          <span class="menu-icon">📚</span> Библиотека
+        </a>
+      </nav>
+
+      <!-- User Progress / XP Tracker widget -->
+      <div class="user-profile-widget">
+        <div class="avatar-container">
+          <span class="avatar-emoji">🧑‍⚕️</span>
+          <div class="avatar-ring"></div>
+        </div>
+        <div class="user-info">
+          <h3 class="user-name">Будущий Врач</h3>
+          <p class="user-rank" id="user-rank">Младший интерн</p>
+        </div>
+        <div class="xp-progress-container">
+          <div class="xp-header">
+            <span>Уровень <strong id="user-level">1</strong></span>
+            <span id="xp-text">0 / 500 XP</span>
+          </div>
+          <div class="xp-bar">
+            <div class="xp-fill" id="xp-fill" style="width: 0%;"></div>
+          </div>
+        </div>
+      </div>
+    </aside>
+
+    <!-- Main Content Area -->
+    <main class="main-content">
+      <!-- Top Header -->
+      <header class="top-header">
+        <div class="search-bar">
+          <span class="search-icon">🔍</span>
+          <input type="text" id="global-search" placeholder="Искать темы, карточки или тесты (например: Аорта, Инсульт)...">
+        </div>
+        <div class="header-stats">
+          <div class="stat-badge">
+            <span class="badge-icon">⭐</span>
+            <span class="badge-text"><span id="header-xp">0</span> XP</span>
+          </div>
+          <div class="stat-badge">
+            <span class="badge-icon">✅</span>
+            <span class="badge-text"><span id="header-completed-topics">0</span> Темы</span>
+          </div>
+        </div>
+      </header>
+
+      <!-- Dynamic Views Wrapper -->
+      <div class="view-viewport">
+        <!-- SEARCH RESULTS VIEW -->
+        <section id="view-search-results" class="app-view hidden">
+          <div class="view-header">
+            <h2>Результаты поиска для: <span id="search-query-text" class="accent-text">""</span></h2>
+            <button class="btn btn-secondary back-to-dashboard-btn">Назад на главную</button>
+          </div>
+          <div class="search-results-grid" id="search-results-container">
+            <!-- Dynamically generated search results -->
+          </div>
+        </section>
+
+        <!-- DASHBOARD VIEW -->
+        <section id="view-dashboard" class="app-view active">
+          <div class="welcome-banner">
+            <div class="welcome-text">
+              <h2>Добро пожаловать в MedStudy Hub! 🚀</h2>
+              <p>Интерактивный помощник для глубокого освоения медицинских дисциплин. Учитесь по системам органов, тренируйтесь на кейсах и запоминайте с помощью мнемоник.</p>
+            </div>
+            <div class="welcome-stats">
+              <div class="w-stat">
+                <span class="w-stat-value" id="dash-xp">0</span>
+                <span class="w-stat-label">Опыт (XP)</span>
+              </div>
+              <div class="w-stat">
+                <span class="w-stat-value" id="dash-cards-studied">0</span>
+                <span class="w-stat-label">Карточек изучено</span>
+              </div>
+              <div class="w-stat">
+                <span class="w-stat-value" id="dash-cases-solved">0</span>
+                <span class="w-stat-label">Кейсов решено</span>
+              </div>
+            </div>
+          </div>
+
+          <div class="dashboard-grid">
+            <!-- Systems Card -->
+            <div class="dashboard-card glass-panel" id="dash-card-systems">
+              <div class="card-header">
+                <h3>🫁 Изучение по системам органов</h3>
+                <span class="arrow-icon">➔</span>
+              </div>
+              <p>Всесторонний разбор строения, функций, патологии и фармакотерапии в рамках систем человека. Логическая интеграция 7 предметов.</p>
+              <div class="systems-mini-list">
+                <div class="mini-item" data-system="cardiovascular">
+                  <span class="mini-icon">❤️</span>
+                  <div class="mini-info">
+                    <h4>Сердечно-сосудистая</h4>
+                    <div class="mini-progress-bar"><div class="mini-progress-fill" id="progress-cvs" style="width:0%"></div></div>
+                  </div>
+                </div>
+                <div class="mini-item" data-system="nervous">
+                  <span class="mini-icon">🧠</span>
+                  <div class="mini-info">
+                    <h4>Нервная система</h4>
+                    <div class="mini-progress-bar"><div class="mini-progress-fill" id="progress-ns" style="width:0%"></div></div>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            <!-- Mnemonic Card -->
+            <div class="dashboard-card glass-panel" id="dash-card-mnemonics">
+              <div class="card-header">
+                <h3>🎴 Мнемоники и карточки</h3>
+                <span class="arrow-icon">➔</span>
+              </div>
+              <p>Уникальные мнемоники для быстрого запоминания анатомических терминов, физиологических процессов и классификаций лекарств.</p>
+              <div class="mnemonic-preview-box">
+                <div class="mnemonic-badge">Мнемоника дня</div>
+                <div class="mnemonic-text" id="dash-mnemonic-text">
+                  Загрузка мнемоники...
+                </div>
+              </div>
+            </div>
+
+            <!-- Daily Case Card -->
+            <div class="dashboard-card glass-panel col-span-2" id="dash-card-daily-case">
+              <div class="card-header">
+                <h3>🏥 Рекомендуемый клинический кейс</h3>
+                <button class="btn btn-primary btn-sm" id="dash-start-case-btn">Решать кейс</button>
+              </div>
+              <div class="case-preview-body">
+                <h4 id="dash-case-title">Кейс: ...</h4>
+                <p id="dash-case-desc">Загрузка клинической картины...</p>
+                <div class="case-meta">
+                  <span class="case-difficulty-badge">Сложность: <span id="dash-case-diff">Средняя</span></span>
+                  <span class="case-reward-badge">Награда: +150 XP</span>
+                </div>
+              </div>
+            </div>
+          </div>
+        </section>
+
+        <!-- ANATOMY 3D VIEW -->
+        <section id="view-anatomy-3d" class="app-view hidden">
+          <div class="view-header">
+            <h2>Интерактивная 3D-Анатомия</h2>
+            <p class="view-subtitle">Нажмите на любой орган или скелетную структуру на трехмерной голограмме для изучения исчерпывающей медицинской информации.</p>
+          </div>
+          
+          <div class="anatomy-layout">
+            <!-- Left: Interactive 3D Canvas -->
+            <div class="anatomy-visual glass-panel" style="position: relative; overflow: hidden; min-height: 550px;">
+              <div id="anatomy-canvas-container" style="width: 100%; height: 500px; cursor: grab;"></div>
+              <div class="anatomy-tooltip" id="anatomy-tooltip" style="position: absolute; bottom: 20px; left: 50%; transform: translateX(-50%); z-index: 10; margin-top: 0;">Наведите на орган</div>
+            </div>
+            
+            <!-- Right: Text Description Panel -->
+            <div class="anatomy-details glass-panel">
+              <div id="anatomy-details-empty" class="details-empty-state">
+                <span class="pulse-icon">🧍</span>
+                <h3>Интерактивная панель</h3>
+                <p>Кликните по любому органу или костной структуре слева, чтобы открыть исчерпывающий медицинский учебник с деталями всех связанных болезней.</p>
+              </div>
+              <div id="anatomy-details-content" class="details-content-box hidden">
+                <div class="details-header-row">
+                  <div class="details-title-block">
+                    <span class="organ-icon" id="det-organ-icon">🧠</span>
+                    <div>
+                      <h3 id="det-organ-title">Головной мозг</h3>
+                      <p id="det-organ-latin" class="latin-name">Encephalon</p>
+                    </div>
+                  </div>
+                </div>
+                
+                <!-- Quick Navigation Tabs for the organ -->
+                <div class="organ-tabs-container">
+                  <button class="organ-tab active" data-tab="anatomy">Анатомия</button>
+                  <button class="organ-tab" data-tab="histology">Гистология</button>
+                  <button class="organ-tab" data-tab="physiology">Физиология</button>
+                  <button class="organ-tab" data-tab="biochemistry">Биохимия</button>
+                  <button class="organ-tab" data-tab="pathology">Патология</button>
+                  <button class="organ-tab" data-tab="pharmacology">Фармакология</button>
+                </div>
+                
+                <!-- Textbook detail sheet -->
+                <div class="organ-textbook-sheet" id="det-textbook-content">
+                  Загрузка...
+                </div>
+              </div>
+            </div>
+          </div>
+        </section>
+
+        <!-- SYSTEMS VIEW -->
+        <section id="view-systems" class="app-view hidden">
+          <div class="view-header">
+            <h2>Изучение по системам человека</h2>
+            <p class="view-subtitle">Выберите систему органов для комплексного изучения всех связанных дисциплин.</p>
+          </div>
+          <div class="systems-grid" id="systems-grid-container">
+            <!-- Dynamically populated systems cards -->
+          </div>
+        </section>
+
+        <!-- SYSTEM WORKSPACE VIEW -->
+        <section id="view-system-workspace" class="app-view hidden">
+          <div id="system-workspace" class="system-workspace glass-panel">
+            <div class="workspace-header">
+              <button class="btn btn-link back-to-systems-btn">← К списку систем</button>
+              <div class="workspace-title-block">
+                <span class="ws-icon" id="ws-system-icon">❤️</span>
+                <div>
+                  <h3 id="ws-system-name">Сердечно-сосудистая система</h3>
+                  <p id="ws-system-description" class="subtext">Описание системы...</p>
+                </div>
+              </div>
+            </div>
+
+            <!-- Horizontal Subject Tab Bar -->
+            <div class="subject-tabs-container">
+              <div class="subject-tabs-scroll" id="ws-subject-tabs">
+                <!-- Dynamically populated subject tabs -->
+              </div>
+            </div>
+
+            <!-- Workspace Content area -->
+            <div class="workspace-content">
+              <!-- Left: Theory Content -->
+              <div class="theory-main">
+                <div class="topic-header-row">
+                  <h4 id="ws-topic-title">Анатомия сердца</h4>
+                  <div class="topic-meta">
+                    <span class="sources-badge" id="ws-topic-sources">Источники: ...</span>
+                    <button class="btn btn-outline btn-sm" id="btn-mark-topic-complete">Отметить как изучено</button>
+                  </div>
+                </div>
+
+                <!-- Logical Explanation Block (Highlighted) -->
+                <div class="logical-explanation-box">
+                  <div class="box-title">🧠 Логическая связь:</div>
+                  <p id="ws-topic-logical-link">Здесь будет логическая связь темы с другими предметами...</p>
+                </div>
+
+                <!-- Theory HTML Content -->
+                <div class="theory-body-text" id="ws-topic-body">
+                  Здесь будет текст статьи...
+                </div>
+              </div>
+
+              <!-- Right: Quick Practice Sidebar -->
+              <div class="practice-sidebar">
+                <div class="practice-card">
+                  <h4>🧠 Самопроверка</h4>
+                  <p>Закрепите этот материал с помощью флеш-карточек и тестов по этой теме.</p>
+                  <div class="practice-btn-group">
+                    <button class="btn btn-primary w-full" id="ws-practice-cards-btn">🎴 Карточки по теме</button>
+                    <button class="btn btn-secondary w-full" id="ws-practice-quiz-btn">📝 Пройти мини-тест</button>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+        </section>
+
+        <!-- SUBJECTS VIEW -->
+        <section id="view-subjects" class="app-view hidden">
+          <div class="view-header">
+            <h2>Изучение по предметам (Классический подход)</h2>
+            <p class="view-subtitle">Выберите конкретный медицинский предмет, чтобы просмотреть все его разделы во всех системах.</p>
+          </div>
+          <div class="subjects-grid" id="subjects-grid-container">
+            <!-- Dynamically populated subject cards -->
+          </div>
+        </section>
+
+        <!-- SUBJECT WORKSPACE VIEW -->
+        <section id="view-subject-workspace" class="app-view hidden">
+          <div id="subject-workspace" class="subject-workspace glass-panel">
+            <div class="workspace-header">
+              <button class="btn btn-link back-to-subjects-btn">← К списку предметов</button>
+              <div class="workspace-title-block">
+                <span class="ws-icon" id="ws-subject-icon">🦴</span>
+                <div>
+                  <h3 id="ws-subject-name">Анатомия</h3>
+                  <p class="subtext">Список тем по всему курсу предмета во всех системах организма</p>
+                </div>
+              </div>
+            </div>
+            
+            <div class="subject-topics-list-container">
+              <div class="topics-grouped-by-system" id="subject-topics-by-system">
+                <!-- Dynamically populated topics grouped by system -->
+              </div>
+            </div>
+          </div>
+        </section>
+
+        <!-- FLASHCARDS VIEW -->
+        <section id="view-flashcards" class="app-view hidden">
+          <div class="view-header">
+            <h2>Флеш-карточки (Интерактивное запоминание)</h2>
+            <p class="view-subtitle">Повторяйте ключевые термины, факты и мнемоники по методу интервального повторения.</p>
+          </div>
+
+          <!-- Filter Bar -->
+          <div class="filter-bar glass-panel">
+            <div class="filter-group">
+              <label for="fc-filter-system">Система:</label>
+              <select id="fc-filter-system">
+                <option value="all">Все системы</option>
+                <option value="cardiovascular">Сердечно-сосудистая</option>
+                <option value="nervous">Нервная</option>
+              </select>
+            </div>
+            <div class="filter-group">
+              <label for="fc-filter-subject">Предмет:</label>
+              <select id="fc-filter-subject">
+                <option value="all">Все предметы</option>
+                <option value="anatomy">Анатомия</option>
+                <option value="histology">Гистология</option>
+                <option value="physiology">Нормфиз</option>
+                <option value="biochemistry">Биохимия</option>
+                <option value="pathophysiology">Патфиз</option>
+                <option value="pathology">Патанат</option>
+                <option value="pharmacology">Фармакология</option>
+              </select>
+            </div>
+            <div class="filter-group">
+              <label for="fc-filter-type">Тип:</label>
+              <select id="fc-filter-type">
+                <option value="all">Все карточки</option>
+                <option value="regular">Обычные карточки</option>
+                <option value="mnemonic">Мнемоники</option>
+              </select>
+            </div>
+          </div>
+
+          <!-- Flashcard Deck Area -->
+          <div class="flashcard-deck-wrapper">
+            <div class="flashcard-outer" id="flashcard-element">
+              <div class="flashcard-inner">
+                <!-- Front Side -->
+                <div class="flashcard-side flashcard-front">
+                  <div class="card-meta">
+                    <span class="card-system-tag" id="fc-front-system">Система</span>
+                    <span class="card-subject-tag" id="fc-front-subject">Предмет</span>
+                  </div>
+                  <div class="card-body">
+                    <p id="fc-question-text">Вопрос карточки?</p>
+                  </div>
+                  <div class="card-hint">
+                    Кликните по карточке, чтобы перевернуть
+                  </div>
+                </div>
+                <!-- Back Side -->
+                <div class="flashcard-side flashcard-back">
+                  <div class="card-meta">
+                    <span class="card-system-tag" id="fc-back-system">Система</span>
+                    <span class="card-subject-tag" id="fc-back-subject">Предмет</span>
+                  </div>
+                  <div class="card-body">
+                    <p id="fc-answer-text">Ответ карточки...</p>
+                  </div>
+                  <div class="card-hint">
+                    Кликните, чтобы вернуть вопрос
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            <!-- Action buttons -->
+            <div class="flashcard-controls">
+              <button class="btn btn-danger btn-lg" id="fc-btn-repeat">🔴 Повторить</button>
+              <button class="btn btn-success btn-lg" id="fc-btn-know">🟢 Знаю (+15 XP)</button>
+            </div>
+
+            <!-- Deck Status -->
+            <p class="deck-status" id="fc-deck-status">Карточка 1 из 10</p>
+          </div>
+        </section>
+
+        <!-- QUIZZES VIEW -->
+        <section id="view-quizzes" class="app-view hidden">
+          <div class="view-header">
+            <h2>Тестирование знаний</h2>
+            <p class="view-subtitle">Проверьте свое понимание пройденного материала с подробным разбором ошибок.</p>
+          </div>
+
+          <!-- Quiz Setup/Selection -->
+          <div class="quiz-selector-container glass-panel" id="quiz-setup-panel">
+            <h3>Выбор темы теста</h3>
+            <p>Выберите интересующий вас фильтр, чтобы сгенерировать подборку вопросов.</p>
+            
+            <div class="quiz-setup-grid">
+              <div class="filter-group">
+                <label for="qz-setup-system">Система органов:</label>
+                <select id="qz-setup-system">
+                  <option value="all">Все системы</option>
+                  <option value="cardiovascular">Сердечно-сосудистая</option>
+                  <option value="nervous">Нервная</option>
+                </select>
+              </div>
+              <div class="filter-group">
+                <label for="qz-setup-subject">Предмет:</label>
+                <select id="qz-setup-subject">
+                  <option value="all">Все предметы</option>
+                  <option value="anatomy">Анатомия</option>
+                  <option value="histology">Гистология</option>
+                  <option value="physiology">Нормфиз</option>
+                  <option value="biochemistry">Биохимия</option>
+                  <option value="pathophysiology">Патфиз</option>
+                  <option value="pathology">Патанат</option>
+                  <option value="pharmacology">Фармакология</option>
+                </select>
+              </div>
+            </div>
+            
+            <button class="btn btn-primary" id="btn-start-quiz" style="margin-top:20px;">Начать тестирование</button>
+          </div>
+
+          <!-- Quiz Active Window -->
+          <div class="quiz-active-window glass-panel hidden" id="quiz-active-panel">
+            <div class="quiz-header">
+              <div class="quiz-progress-bar-container">
+                <div class="quiz-progress-fill" id="qz-progress-fill" style="width: 0%;"></div>
+              </div>
+              <div class="quiz-info-row">
+                <span id="qz-question-number">Вопрос 1 из 5</span>
+                <span class="quiz-timer" id="qz-timer">00:00</span>
+              </div>
+            </div>
+
+            <div class="quiz-body">
+              <h3 class="quiz-question-title" id="qz-question-title">Здесь будет текст вопроса?</h3>
+              <div class="quiz-options-list" id="qz-options-list">
+                <!-- Dynamically generated multiple choice buttons -->
+              </div>
+            </div>
+
+            <!-- Quiz Explanation Area (Shown after choosing answer) -->
+            <div class="quiz-explanation-box hidden" id="qz-explanation-box">
+              <div class="explanation-title" id="qz-explanation-title">❌ Неверно / ✅ Верно</div>
+              <p class="explanation-body" id="qz-explanation-text">Разбор вопроса...</p>
+              <button class="btn btn-primary" id="qz-btn-next">Следующий вопрос</button>
+            </div>
+          </div>
+
+          <!-- Quiz Results window -->
+          <div class="quiz-results-window glass-panel hidden" id="quiz-results-panel">
+            <div class="results-badge-container">🏆</div>
+            <h2>Тестирование завершено!</h2>
+            <p class="results-score">Вы ответили правильно на <strong id="qz-result-correct">0</strong> из <strong id="qz-result-total">0</strong> вопросов</p>
+            <p class="results-xp-gain">Получено опыта: <span id="qz-result-xp" class="accent-text">+0 XP</span></p>
+            <div class="results-actions">
+              <button class="btn btn-primary" id="qz-btn-restart">Пройти еще раз</button>
+              <button class="btn btn-secondary" id="qz-btn-to-dashboard">На главную</button>
+            </div>
+          </div>
+        </section>
+
+        <!-- CLINICAL CASES VIEW -->
+        <section id="view-cases" class="app-view hidden">
+          <div class="view-header">
+            <h2>Интерактивные клинические кейсы</h2>
+            <p class="view-subtitle">Почувствуйте себя врачом у постели больного. Проведите дифференциальную диагностику и выберите правильное лечение.</p>
+          </div>
+
+          <!-- Case List selection -->
+          <div class="cases-list-grid" id="cases-list-container">
+            <!-- Dynamically populated cases -->
+          </div>
+
+          <!-- Active Case Workspace -->
+          <div class="active-case-workspace glass-panel hidden" id="case-active-panel">
+            <div class="workspace-header">
+              <button class="btn btn-link back-to-cases-btn">← К списку кейсов</button>
+              <h3 id="case-workspace-title">Название кейса</h3>
+            </div>
+            
+            <div class="case-layout">
+              <!-- Left side: Patient Chart / Clinical picture -->
+              <div class="patient-chart">
+                <div class="chart-header">📋 Карта пациента</div>
+                <div class="chart-body">
+                  <p id="case-patient-history">Здесь находится анамнез и клиническая картина...</p>
+                </div>
+              </div>
+
+              <!-- Right side: Questions and interactive actions -->
+              <div class="case-decision-panel">
+                <div class="step-indicator" id="case-step-indicator">Шаг 1 из 3</div>
+                
+                <div class="case-step-question-box">
+                  <h4 id="case-step-question">Что вы назначите пациенту в первую очередь?</h4>
+                  <div class="case-step-options" id="case-step-options">
+                    <!-- Dynamically generated choice buttons -->
+                  </div>
+                </div>
+
+                <!-- Step explanation and action -->
+                <div class="case-step-feedback hidden" id="case-step-feedback">
+                  <div class="feedback-title" id="case-step-feedback-title">Решение...</div>
+                  <p class="feedback-text" id="case-step-feedback-text">Пояснение...</p>
+                  <button class="btn btn-primary" id="case-btn-next-step">Далее</button>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <!-- Case Completion screen -->
+          <div class="case-completed-panel glass-panel hidden" id="case-completed-panel">
+            <div class="completion-icon">💖</div>
+            <h2>Кейс успешно решен!</h2>
+            <p>Вы проявили клиническое мышление и помогли пациенту.</p>
+            <p class="xp-earned-banner" id="case-completion-xp">+150 XP</p>
+            <button class="btn btn-primary back-to-cases-btn">Вернуться к кейсам</button>
+          </div>
+        </section>
+
+        <!-- LIBRARY VIEW -->
+        <section id="view-library" class="app-view hidden">
+          <div class="view-header">
+            <h2>Медицинская библиотека</h2>
+            <p class="view-subtitle">Список рекомендованной литературы и возможность добавлять собственные учебники, конспекты или PDF-файлы.</p>
+          </div>
+
+          <div class="library-layout">
+            <!-- Recommended textbooks list -->
+            <div class="library-textbooks glass-panel">
+              <h3>📚 Рекомендуемые книги</h3>
+              <div class="books-list" id="books-list-container">
+                <!-- Dynamically populated books -->
+              </div>
+            </div>
+
+            <!-- Upload new resources form -->
+            <div class="library-upload glass-panel">
+              <h3>📂 Добавить свой конспект / книгу</h3>
+              <p class="subtext">Вы можете загрузить свои файлы или добавить ссылки для быстрого доступа к учебным материалам.</p>
+              <form id="add-resource-form" class="resource-form">
+                <div class="form-group">
+                  <label for="res-title">Название:</label>
+                  <input type="text" id="res-title" placeholder="Например: Методичка по фармакологии..." required>
+                </div>
+                <div class="form-group">
+                  <label for="res-subject">Предмет:</label>
+                  <select id="res-subject">
+                    <option value="anatomy">Анатомия</option>
+                    <option value="histology">Гистология</option>
+                    <option value="physiology">Нормфиз</option>
+                    <option value="biochemistry">Биохимия</option>
+                    <option value="pathophysiology">Патфиз</option>
+                    <option value="pathology">Патанат</option>
+                    <option value="pharmacology">Фармакология</option>
+                  </select>
+                </div>
+                <div class="form-group">
+                  <label for="res-link">Ссылка или описание файла:</label>
+                  <input type="text" id="res-link" placeholder="http://... или 'Файл на рабочем столе'" required>
+                </div>
+                <button type="submit" class="btn btn-primary w-full">Добавить ресурс</button>
+              </form>
+
+              <!-- User uploaded items list -->
+              <div class="user-resources-list">
+                <h4>Ваши добавленные материалы</h4>
+                <div id="user-resources-container">
+                  <p class="empty-list-text" id="no-resources-text">Список пуст. Добавьте свои первые материалы.</p>
+                  <!-- Dynamically populated user uploaded list -->
+                </div>
+              </div>
+            </div>
+          </div>
+        </section>
+      </div>
+    </main>
+  </div>
+
+  <!-- External JS Scripts -->
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/controls/OrbitControls.js"></script>
+  <script src="data.js"></script>
+  <script src="data_anatomy3d.js"></script>
+  <script src="data_theory_heavy.js"></script>
+  <script src="app.js"></script>
+</body>
+</html>
