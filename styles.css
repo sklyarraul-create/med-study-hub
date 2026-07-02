@@ -2049,3 +2049,768 @@ body {
 .shake {
   animation: shake 0.4s ease-in-out;
 }
+
+/* --- CLINICAL QUEST VIEW --- */
+.quest-layout {
+  margin-top: 30px;
+  padding: 35px;
+  display: flex;
+  flex-direction: column;
+}
+
+.quest-game-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 30px;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+  padding-bottom: 15px;
+}
+
+.quest-stage-text {
+  font-family: var(--font-heading);
+  color: var(--accent-cyan);
+  font-size: 16px;
+  font-weight: 600;
+}
+
+.quest-progress-bar {
+  width: 250px;
+  height: 8px;
+  background: rgba(255, 255, 255, 0.06);
+  border-radius: 4px;
+  overflow: hidden;
+}
+
+.quest-progress-fill {
+  height: 100%;
+  background: linear-gradient(90deg, var(--accent-cyan), var(--accent-blue));
+  transition: width 0.4s ease-in-out;
+}
+
+.quest-game-panel {
+  display: flex;
+  flex-direction: column;
+  gap: 30px;
+}
+
+.quest-symptoms-area {
+  display: flex;
+  flex-direction: column;
+  gap: 15px;
+}
+
+.symptom-card {
+  display: flex;
+  align-items: start;
+  gap: 15px;
+  background: rgba(255, 255, 255, 0.02);
+  border: 1px solid rgba(255, 255, 255, 0.06);
+  padding: 20px;
+  border-radius: 12px;
+  box-shadow: 0 4px 10px rgba(0, 0, 0, 0.2);
+  animation: slideInUp 0.5s ease forwards;
+}
+
+.symptom-number {
+  min-width: 30px;
+  height: 30px;
+  border-radius: 50%;
+  background: rgba(0, 242, 254, 0.12);
+  color: var(--accent-cyan);
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  font-family: var(--font-heading);
+  font-weight: 700;
+  font-size: 14px;
+  box-shadow: 0 0 10px rgba(0, 242, 254, 0.2);
+}
+
+.symptom-text {
+  flex: 1;
+  font-size: 15px;
+  line-height: 1.6;
+  color: #e5e7eb;
+}
+
+.quest-interaction-panel {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  text-align: center;
+  gap: 20px;
+  margin-top: 15px;
+  border-top: 1px solid rgba(255, 255, 255, 0.05);
+  padding-top: 25px;
+}
+
+.quest-xp-indicator {
+  font-size: 15px;
+  color: var(--text-muted);
+}
+
+.quest-xp-indicator span {
+  font-family: var(--font-heading);
+  font-weight: 700;
+  font-size: 18px;
+}
+
+.quest-interaction-panel h3 {
+  font-family: var(--font-heading);
+  font-size: 20px;
+  color: var(--text-primary);
+  margin-bottom: 5px;
+}
+
+.quest-options-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+  gap: 15px;
+  width: 100%;
+  max-width: 850px;
+}
+
+.quest-option-btn {
+  background: rgba(255, 255, 255, 0.03);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  color: #d1d5db;
+  padding: 16px 20px;
+  border-radius: 12px;
+  cursor: pointer;
+  font-size: 14px;
+  font-weight: 500;
+  font-family: var(--font-heading);
+  transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+  text-align: center;
+}
+
+.quest-option-btn:hover:not(:disabled) {
+  background: rgba(0, 242, 254, 0.08);
+  border-color: var(--accent-cyan);
+  color: white;
+  transform: translateY(-2px);
+  box-shadow: 0 4px 15px rgba(0, 242, 254, 0.15);
+}
+
+.quest-option-btn:disabled {
+  cursor: not-allowed;
+}
+
+.quest-option-btn.wrong {
+  background: rgba(239, 68, 68, 0.08);
+  border-color: var(--accent-pink);
+  color: var(--accent-pink);
+  text-decoration: line-through;
+  opacity: 0.6;
+}
+
+.quest-status-message {
+  padding: 12px 30px;
+  border-radius: 25px;
+  font-weight: 600;
+  font-size: 14px;
+  transition: var(--transition-smooth);
+}
+
+.quest-status-message.success {
+  background: rgba(16, 185, 129, 0.1);
+  border: 1px solid #10b981;
+  color: #10b981;
+  box-shadow: 0 0 10px rgba(16, 185, 129, 0.2);
+}
+
+.quest-status-message.error {
+  background: rgba(239, 68, 68, 0.1);
+  border: 1px solid var(--accent-pink);
+  color: var(--accent-pink);
+  box-shadow: 0 0 10px rgba(239, 68, 68, 0.2);
+  animation: shake 0.4s ease-in-out;
+}
+
+.quest-explanation-panel {
+  margin-top: 25px;
+  border-top: 1px solid rgba(255, 255, 255, 0.08);
+  padding-top: 25px;
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
+  width: 100%;
+}
+
+.explanation-alert {
+  padding: 18px 24px;
+  border-radius: 12px;
+  font-weight: 600;
+  font-size: 15px;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.explanation-alert.success {
+  background: rgba(16, 185, 129, 0.12);
+  border-left: 5px solid #10b981;
+  color: #10b981;
+}
+
+.explanation-alert.fail {
+  background: rgba(239, 68, 68, 0.12);
+  border-left: 5px solid var(--accent-pink);
+  color: var(--accent-pink);
+}
+
+.explanation-text-box {
+  background: rgba(0, 0, 0, 0.25);
+  border: 1px solid rgba(255, 255, 255, 0.03);
+  padding: 25px;
+  border-radius: 12px;
+  line-height: 1.7;
+  font-size: 14px;
+  color: #e5e7eb;
+}
+
+.explanation-text-box h4 {
+  font-family: var(--font-heading);
+  color: var(--accent-cyan);
+  font-size: 16px;
+  margin-bottom: 15px;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.05);
+  padding-bottom: 8px;
+}
+
+.explanation-text-box ul {
+  padding-left: 20px;
+  margin-top: 10px;
+}
+
+.explanation-text-box li {
+  margin-bottom: 8px;
+}
+
+#quest-next-btn {
+  align-self: center;
+  padding: 12px 40px;
+  font-weight: 600;
+}
+
+@keyframes slideInUp {
+  from {
+    opacity: 0;
+    transform: translateY(20px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+/* Wiki Wikipedia-style Links */
+.wiki-link {
+  color: var(--accent-cyan);
+  text-decoration: none;
+  border-bottom: 1.5px dashed rgba(0, 242, 254, 0.4);
+  cursor: pointer;
+  transition: all 0.25s cubic-bezier(0.4, 0, 0.2, 1);
+  font-weight: 500;
+  display: inline;
+}
+
+.wiki-link:hover {
+  color: #00d2de;
+  border-bottom-style: solid;
+  border-bottom-color: var(--accent-cyan);
+  background: rgba(0, 242, 254, 0.08);
+  border-radius: 4px;
+  padding: 0 4px;
+  text-shadow: 0 0 8px rgba(0, 242, 254, 0.6);
+}
+
+/* Wiki Popup Card styling */
+.wiki-popup-card {
+  position: fixed;
+  z-index: 100000;
+  width: 90%;
+  max-width: 320px;
+  background: rgba(10, 15, 30, 0.85);
+  border: 1px solid var(--accent-cyan);
+  border-radius: var(--border-radius-md);
+  padding: 20px;
+  box-shadow: 0 0 25px rgba(0, 242, 254, 0.25);
+  backdrop-filter: blur(12px);
+  transform: translate(-50%, -100%);
+  margin-top: -10px; /* offset above target */
+  transition: opacity 0.25s ease, transform 0.25s ease;
+  animation: slideInTooltip 0.25s cubic-bezier(0.4, 0, 0.2, 1) forwards;
+}
+
+.wiki-popup-card.hidden {
+  display: none !important;
+}
+
+.wiki-popup-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 10px;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+  padding-bottom: 6px;
+}
+
+.wiki-popup-header h4 {
+  font-family: var(--font-heading);
+  color: var(--accent-cyan);
+  margin: 0;
+  font-size: 16px;
+}
+
+.wiki-close-btn {
+  background: none;
+  border: none;
+  color: var(--text-muted);
+  font-size: 20px;
+  cursor: pointer;
+  line-height: 1;
+}
+
+.wiki-close-btn:hover {
+  color: var(--accent-pink);
+}
+
+.wiki-popup-body {
+  font-size: 13px;
+  line-height: 1.5;
+  color: #d1d5db;
+  margin-bottom: 15px;
+}
+
+.wiki-popup-footer {
+  display: flex;
+  justify-content: flex-end;
+}
+
+#wiki-popup-go-btn {
+  padding: 6px 14px;
+  font-size: 12px;
+  font-weight: 600;
+}
+
+@keyframes slideInTooltip {
+  from {
+    opacity: 0;
+    transform: translate(-50%, -90%) scale(0.95);
+  }
+  to {
+    opacity: 1;
+    transform: translate(-50%, -100%) scale(1);
+  }
+}
+
+/* Achievement Toast styling */
+.achievement-toast {
+  position: fixed;
+  top: 25px;
+  right: 25px;
+  z-index: 100001;
+  width: 360px;
+  background: rgba(13, 20, 38, 0.85);
+  border: 1px solid #ffd700;
+  border-radius: var(--border-radius-md);
+  padding: 16px 20px;
+  display: flex;
+  align-items: center;
+  gap: 15px;
+  box-shadow: 0 0 25px rgba(255, 215, 0, 0.25);
+  backdrop-filter: blur(12px);
+  animation: slideInToast 0.4s cubic-bezier(0.18, 0.89, 0.32, 1.28) forwards;
+  transition: opacity 0.3s ease;
+}
+
+.achievement-toast.hidden {
+  display: none !important;
+}
+
+.achievement-icon {
+  font-size: 32px;
+  filter: drop-shadow(0 0 5px rgba(255, 215, 0, 0.4));
+}
+
+.achievement-info {
+  flex: 1;
+}
+
+.achievement-badge {
+  font-size: 9px;
+  color: #ffd700;
+  font-weight: 800;
+  letter-spacing: 1.5px;
+  margin-bottom: 4px;
+  font-family: var(--font-heading);
+}
+
+.achievement-info h4 {
+  font-family: var(--font-heading);
+  color: white;
+  margin: 0;
+  font-size: 15px;
+  font-weight: 700;
+}
+
+.achievement-info p {
+  color: var(--text-muted);
+  font-size: 12px;
+  margin: 2px 0 0 0;
+  line-height: 1.4;
+}
+
+@keyframes slideInToast {
+  from {
+    opacity: 0;
+    transform: translateX(120%);
+  }
+  to {
+    opacity: 1;
+    transform: translateX(0);
+  }
+}
+
+/* --- CONCEPT MAP STYLING --- */
+.map-system-selector {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  padding: 12px;
+  margin-bottom: 20px;
+}
+
+.map-selector-btn {
+  background: rgba(255, 255, 255, 0.05);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  color: var(--text-color);
+  padding: 10px 18px;
+  border-radius: var(--border-radius-sm);
+  cursor: pointer;
+  font-weight: 600;
+  transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+  font-family: var(--font-heading);
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.map-selector-btn:hover {
+  background: rgba(0, 242, 254, 0.1);
+  border-color: rgba(0, 242, 254, 0.4);
+}
+
+.map-selector-btn.active {
+  background: var(--accent-cyan);
+  color: #0b0f19;
+  box-shadow: 0 0 15px rgba(0, 242, 254, 0.4);
+  border-color: var(--accent-cyan);
+}
+
+.map-workspace {
+  display: flex;
+  gap: 20px;
+  position: relative;
+  min-height: 500px;
+}
+
+/* Floating detail card (drawer on the left) */
+.map-detail-card {
+  width: 320px;
+  flex-shrink: 0;
+  background: rgba(13, 20, 38, 0.85);
+  border: 1px solid var(--accent-cyan);
+  border-radius: var(--border-radius-md);
+  padding: 24px;
+  box-shadow: 0 10px 30px rgba(0, 242, 254, 0.15);
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  height: fit-content;
+  animation: slideInUp 0.3s ease;
+}
+
+.map-detail-card.hidden {
+  display: none !important;
+}
+
+.map-detail-close {
+  position: absolute;
+  top: 15px;
+  right: 15px;
+  background: none;
+  border: none;
+  color: var(--text-muted);
+  font-size: 24px;
+  cursor: pointer;
+  line-height: 1;
+}
+
+.map-detail-close:hover {
+  color: var(--accent-pink);
+}
+
+.map-detail-header {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin-bottom: 15px;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+  padding-bottom: 10px;
+}
+
+.map-detail-icon {
+  font-size: 28px;
+}
+
+#map-detail-title {
+  color: var(--accent-cyan);
+  font-family: var(--font-heading);
+  margin: 0;
+  font-size: 18px;
+}
+
+#map-detail-desc {
+  font-size: 14px;
+  line-height: 1.6;
+  color: #d1d5db;
+  margin: 0 0 25px 0;
+}
+
+.map-detail-footer {
+  margin-top: auto;
+}
+
+/* Right side: Map Tree Diagram */
+.map-tree-container {
+  flex: 1;
+  background: rgba(10, 15, 30, 0.6);
+  border: 1px solid rgba(255, 255, 255, 0.05);
+  border-radius: var(--border-radius-md);
+  padding: 20px;
+  overflow: hidden;
+  position: relative;
+  display: flex;
+  flex-direction: column;
+}
+
+.tree-controls {
+  display: flex;
+  gap: 8px;
+  margin-bottom: 15px;
+  z-index: 10;
+}
+
+.map-tree-viewport {
+  flex: 1;
+  overflow: auto;
+  cursor: grab;
+  padding: 40px 10px;
+  min-height: 400px;
+  display: flex;
+  justify-content: center;
+  align-items: flex-start;
+  transition: transform 0.1s ease-out;
+}
+
+.map-tree-viewport:active {
+  cursor: grabbing;
+}
+
+/* CSS Branching Tree Diagram rules */
+.tree * {
+  margin: 0; padding: 0;
+}
+
+.tree ul {
+  padding-top: 20px; 
+  position: relative;
+  transition: all 0.5s;
+  display: flex;
+  justify-content: center;
+}
+
+.tree li {
+  text-align: center;
+  list-style-type: none;
+  position: relative;
+  padding: 20px 10px 0 10px;
+  transition: all 0.5s;
+}
+
+/* Connectors using pseudo elements */
+.tree li::before, .tree li::after {
+  content: '';
+  position: absolute; 
+  top: 0; 
+  right: 50%;
+  border-top: 2px solid rgba(0, 242, 254, 0.35);
+  width: 50%; 
+  height: 20px;
+}
+
+.tree li::after {
+  right: auto; 
+  left: 50%;
+  border-left: 2px solid rgba(0, 242, 254, 0.35);
+}
+
+/* Remove connectors for single children or edges */
+.tree li:only-child::after, .tree li:only-child::before {
+  display: none;
+}
+
+.tree li:only-child { 
+  padding-top: 0;
+}
+
+.tree li:first-child::before, .tree li:last-child::after {
+  border: 0 none;
+}
+
+.tree li:last-child::before {
+  border-right: 2px solid rgba(0, 242, 254, 0.35);
+  border-radius: 0 5px 0 0;
+}
+
+.tree li:first-child::after {
+  border-radius: 5px 0 0 0;
+}
+
+/* Parent connectors */
+.tree ul ul::before {
+  content: '';
+  position: absolute; 
+  top: 0; 
+  left: 50%;
+  border-left: 2px solid rgba(0, 242, 254, 0.35);
+  width: 0; 
+  height: 20px;
+}
+
+/* Node card style */
+.tree-node-card {
+  border: 1.5px solid rgba(255, 255, 255, 0.15);
+  padding: 12px 16px;
+  text-decoration: none;
+  color: #ffffff;
+  font-family: var(--font-heading);
+  font-size: 13px;
+  font-weight: 700;
+  display: inline-block;
+  border-radius: var(--border-radius-sm);
+  background: rgba(13, 20, 38, 0.98); /* Opaque background to hide connecting lines underneath! */
+  cursor: pointer;
+  transition: all 0.25s cubic-bezier(0.4, 0, 0.2, 1);
+  min-width: 160px;
+  max-width: 220px;
+  white-space: normal;
+  word-wrap: break-word;
+  overflow-wrap: break-word;
+  line-height: 1.4;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.4), 0 0 10px rgba(0, 242, 254, 0.05);
+  text-shadow: 0 1px 2px rgba(0, 0, 0, 0.8);
+  position: relative;
+  z-index: 5;
+}
+
+/* Highlight and Hover effects */
+.tree-node-card:hover {
+  background: rgba(15, 30, 60, 0.99);
+  color: var(--accent-cyan);
+  border-color: var(--accent-cyan);
+  box-shadow: 0 0 20px rgba(0, 242, 254, 0.4), 0 4px 12px rgba(0, 0, 0, 0.5);
+  transform: translateY(-3px);
+}
+
+.tree-node-card.active-node {
+  background: rgba(0, 242, 254, 0.15);
+  color: var(--accent-cyan);
+  border-color: var(--accent-cyan);
+  box-shadow: 0 0 22px rgba(0, 242, 254, 0.5), 0 4px 12px rgba(0, 0, 0, 0.5);
+}
+
+/* Custom coloring for different systems */
+.tree-node-card.nervous-node:hover {
+  background: rgba(30, 15, 50, 0.99);
+  border-color: #a855f7;
+  color: #d8b4fe;
+  box-shadow: 0 0 20px rgba(168, 85, 247, 0.5);
+}
+.tree-node-card.nervous-node.active-node {
+  border-color: #a855f7;
+  color: #d8b4fe;
+  background: rgba(168, 85, 247, 0.2);
+  box-shadow: 0 0 22px rgba(168, 85, 247, 0.6);
+}
+
+.tree-node-card.respiratory-node:hover {
+  background: rgba(10, 40, 25, 0.99);
+  border-color: #10b981;
+  color: #6ee7b7;
+  box-shadow: 0 0 20px rgba(16, 185, 129, 0.5);
+}
+.tree-node-card.respiratory-node.active-node {
+  border-color: #10b981;
+  color: #6ee7b7;
+  background: rgba(16, 185, 129, 0.2);
+  box-shadow: 0 0 22px rgba(16, 185, 129, 0.6);
+}
+
+.tree-node-card.digestive-node:hover {
+  background: rgba(45, 30, 10, 0.99);
+  border-color: #f59e0b;
+  color: #fcd34d;
+  box-shadow: 0 0 20px rgba(245, 158, 11, 0.5);
+}
+.tree-node-card.digestive-node.active-node {
+  border-color: #f59e0b;
+  color: #fcd34d;
+  background: rgba(245, 158, 11, 0.2);
+  box-shadow: 0 0 22px rgba(245, 158, 11, 0.6);
+}
+
+.tree-node-card.urinary-node:hover {
+  background: rgba(40, 10, 20, 0.99);
+  border-color: #f43f5e;
+  color: #fda4af;
+  box-shadow: 0 0 20px rgba(244, 63, 94, 0.5);
+}
+.tree-node-card.urinary-node.active-node {
+  border-color: #f43f5e;
+  color: #fda4af;
+  background: rgba(244, 63, 94, 0.2);
+  box-shadow: 0 0 22px rgba(244, 63, 94, 0.6);
+}
+
+.tree-node-card.skeletal-node:hover {
+  background: rgba(30, 35, 45, 0.99);
+  border-color: #e2e8f0;
+  color: #ffffff;
+  box-shadow: 0 0 20px rgba(255, 255, 255, 0.3);
+}
+.tree-node-card.skeletal-node.active-node {
+  border-color: #e2e8f0;
+  color: #ffffff;
+  background: rgba(255, 255, 255, 0.15);
+  box-shadow: 0 0 22px rgba(255, 255, 255, 0.4);
+}
+
+/* Tree container transition for zoom scale */
+.tree {
+  transform-origin: top center;
+  transition: transform 0.12s cubic-bezier(0.25, 0.46, 0.45, 0.94);
+}
+
+/* Responsive adjustments */
+@media (max-width: 900px) {
+  .map-workspace {
+    flex-direction: column;
+  }
+  .map-detail-card {
+    width: 100%;
+  }
+}

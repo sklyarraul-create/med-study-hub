@@ -68,6 +68,12 @@
         <a href="#cases" class="menu-item" data-view="cases">
           <span class="menu-icon">🏥</span> Клинические кейсы
         </a>
+        <a href="#clinical-quest" class="menu-item" data-view="clinical-quest">
+          <span class="menu-icon">🔍</span> Клинический квест
+        </a>
+        <a href="#concept-map" class="menu-item" data-view="concept-map">
+          <span class="menu-icon">🕸️</span> Карта связей
+        </a>
         <a href="#library" class="menu-item" data-view="library">
           <span class="menu-icon">📚</span> Библиотека
         </a>
@@ -642,8 +648,120 @@
             </div>
           </div>
         </section>
+
+        <!-- CLINICAL QUEST VIEW -->
+        <section id="view-clinical-quest" class="app-view hidden">
+          <div class="view-header">
+            <h2>Клинический квест: Врач-детектив</h2>
+            <p class="view-subtitle">Определите диагноз по нарастающим симптомам. Чем раньше вы угадаете правильную болезнь, тем больше очков опыта (XP) заработаете!</p>
+          </div>
+
+          <div class="quest-layout glass-panel">
+            <div class="quest-game-header">
+              <span class="quest-stage-text" id="quest-stage-text">Квест 1 из 6</span>
+              <div class="quest-progress-bar">
+                <div class="quest-progress-fill" id="quest-progress-fill" style="width: 0%;"></div>
+              </div>
+            </div>
+
+            <div class="quest-game-panel">
+              <div class="quest-symptoms-area" id="quest-symptoms-container">
+                <!-- Symptoms will appear here dynamically as cards -->
+              </div>
+
+              <div class="quest-interaction-panel" id="quest-interaction-container">
+                <div class="quest-xp-indicator">
+                  Ценность верного ответа: <span id="quest-xp-value" class="neon-text">100</span> XP
+                </div>
+                <h3>Какой наиболее вероятный диагноз?</h3>
+                <div class="quest-options-grid" id="quest-options-container">
+                  <!-- Dynamic selection buttons -->
+                </div>
+                <div class="quest-status-message hidden" id="quest-status-message"></div>
+              </div>
+
+              <!-- Explanation section (initially hidden, shown on success/fail) -->
+              <div class="quest-explanation-panel hidden" id="quest-explanation-container">
+                <div class="explanation-alert" id="quest-explanation-alert"></div>
+                <div class="explanation-text-box" id="quest-explanation-text"></div>
+                <button class="btn btn-primary" id="quest-next-btn">Следующий квест</button>
+              </div>
+            </div>
+          </div>
+        </section>
+
+        <!-- CONCEPT MAP VIEW -->
+        <section id="view-concept-map" class="app-view hidden">
+          <div class="view-header">
+            <h2>Интерактивная карта связей</h2>
+            <p class="view-subtitle">Наглядная классификация медицинских терминов. Нажимайте на плашки, чтобы увидеть подробное описание и быстро перейти к 3D Атласу.</p>
+          </div>
+
+          <!-- System selector tab-bar -->
+          <div class="map-system-selector glass-panel">
+            <button class="map-selector-btn active" data-map-system="cardio">🫀 Кровеносная</button>
+            <button class="map-selector-btn" data-map-system="nervous">🧠 Нервная</button>
+            <button class="map-selector-btn" data-map-system="respiratory">🫁 Дыхательная</button>
+            <button class="map-selector-btn" data-map-system="digestive">🥗 Пищеварительная</button>
+            <button class="map-selector-btn" data-map-system="urinary">🧪 Выделительная</button>
+            <button class="map-selector-btn" data-map-system="skeletal">🦴 Скелетная</button>
+          </div>
+
+          <div class="map-workspace">
+            <!-- Left: Floating detailing card (glass card) -->
+            <div class="map-detail-card glass-panel hidden" id="map-detail-card">
+              <button class="map-detail-close" id="map-detail-close">×</button>
+              <div class="map-detail-header">
+                <span class="map-detail-icon">🔬</span>
+                <h3 id="map-detail-title">Название узла</h3>
+              </div>
+              <p id="map-detail-desc">Описание понятия...</p>
+              <div class="map-detail-footer">
+                <button class="btn btn-primary btn-sm" id="map-detail-go-btn">Перейти в 3D Атлас</button>
+              </div>
+            </div>
+
+            <!-- Right: Interactive SVG-connector flow chart tree -->
+            <div class="map-tree-container glass-panel">
+              <div class="tree-controls">
+                <button class="btn btn-outline btn-xs" id="map-zoom-in-btn">🔍+ Увеличить</button>
+                <button class="btn btn-outline btn-xs" id="map-zoom-out-btn">🔍- Уменьшить</button>
+                <button class="btn btn-outline btn-xs" id="map-reset-btn">🔄 Сброс</button>
+              </div>
+              <div class="map-tree-viewport" id="map-tree-viewport">
+                <div class="tree" id="concept-tree-root-container">
+                  <!-- Tree nested list dynamically generated here -->
+                </div>
+              </div>
+            </div>
+          </div>
+        </section>
       </div>
     </main>
+  </div>
+
+  <!-- WIKI TOOLTIP POPUP -->
+  <div id="wiki-popup" class="wiki-popup-card hidden">
+    <div class="wiki-popup-header">
+      <h4 id="wiki-popup-title">Название термина</h4>
+      <button id="wiki-popup-close" class="wiki-close-btn">×</button>
+    </div>
+    <div class="wiki-popup-body">
+      <p id="wiki-popup-desc">Определение термина из энциклопедии...</p>
+    </div>
+    <div class="wiki-popup-footer">
+      <button id="wiki-popup-go-btn" class="btn btn-primary btn-xs">Перейти в 3D Атлас</button>
+    </div>
+  </div>
+
+  <!-- ACHIEVEMENT TOAST NOTIFICATION -->
+  <div id="achievement-toast" class="achievement-toast hidden">
+    <div class="achievement-icon">⭐</div>
+    <div class="achievement-info">
+      <div class="achievement-badge">ДОСТИЖЕНИЕ РАЗБЛОКИРОВАНО!</div>
+      <h4 id="achievement-title">Название ачивки</h4>
+      <p id="achievement-desc">Описание действия, за которое получена награда.</p>
+    </div>
   </div>
 
   <!-- External JS Scripts -->
@@ -652,6 +770,8 @@
   <script src="data.js"></script>
   <script src="data_anatomy3d.js"></script>
   <script src="data_theory_heavy.js"></script>
+  <script src="data_quest.js"></script>
+  <script src="data_map.js"></script>
   <script src="app.js"></script>
 </body>
 </html>
