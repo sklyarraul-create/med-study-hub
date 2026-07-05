@@ -35,6 +35,7 @@
         <input type="password" id="lock-password-input" placeholder="Код доступа..." autofocus>
         <button id="lock-submit-btn">Войти</button>
         <p id="lock-error-msg" class="lock-error hidden">❌ Неверный код доступа</p>
+        <p id="lock-status-indicator" style="font-size: 11px; color: #a1a1aa; margin-top: 15px; opacity: 0.7; font-family: sans-serif;">⏳ Загрузка модулей системы...</p>
       </div>
     </div>
   </div>
@@ -1396,7 +1397,7 @@
   <script src="app.js"></script>
 
   <!-- ACCOUNT CREATION MODAL OVERLAY -->
-  <div id="account-creation-modal" class="account-modal-overlay hidden" style="position: fixed; top: 0; left: 0; width: 100vw; height: 100vh; background: rgba(3, 8, 20, 0.95); backdrop-filter: blur(15px); z-index: 3000; display: flex; justify-content: center; align-items: center;">
+  <div id="account-creation-modal" class="account-modal-overlay hidden" style="position: fixed; top: 0; left: 0; width: 100vw; height: 100vh; background: rgba(3, 8, 20, 0.95); backdrop-filter: blur(15px); z-index: 3000; display: none; justify-content: center; align-items: center;">
     <div class="account-modal-container glass-panel" style="width: 450px; padding: 35px; border-radius: 16px; background: rgba(13, 20, 38, 0.9); border: 1px solid rgba(0, 242, 254, 0.2); box-shadow: 0 0 40px rgba(0, 242, 254, 0.15); box-sizing: border-box;">
       <div style="text-align: center; margin-bottom: 25px;">
         <span style="font-size: 50px;">🩺</span>

@@ -224,8 +224,14 @@ document.addEventListener("DOMContentLoaded", () => {
 
 
   // --- INIT APPLICATION ---
+  // Called once AFTER the lock screen is successfully bypassed
+  function afterUnlock() {
+    loadUserProfile();
+    setupSocialSystem();
+  }
+
   function init() {
-    setupLockScreen();
+    setupLockScreen(); // This will call afterUnlock() upon success
     populateSystemDropdowns();
     updateProfileUI();
     loadDashboardData();
@@ -243,8 +249,6 @@ document.addEventListener("DOMContentLoaded", () => {
     setup3DAnatomy();
     setupQuestListeners();
     initConceptMap();
-    loadUserProfile();
-    setupSocialSystem();
   }
 
   // Populate dynamic select dropdowns with all systems from data.js
@@ -1543,14 +1547,19 @@ document.addEventListener("DOMContentLoaded", () => {
     const submitBtn = document.getElementById("lock-submit-btn");
     const errorMsg = document.getElementById("lock-error-msg");
     const lockCard = document.querySelector(".lock-card");
+    const statusIndicator = document.getElementById("lock-status-indicator");
+
+    if (statusIndicator) {
+      statusIndicator.textContent = "✅ Система готова. Введите код.";
+      statusIndicator.style.color = "#00f2fe";
+    }
 
     const CORRECT_PASSWORD = "0981"; // Default passcode
 
     // Check if already authorized in current browser session
     if (safeStorage.getItem("medstudy_authorized") === "true") {
-      if (lockScreen) {
-        lockScreen.classList.add("hidden");
-      }
+      if (lockScreen) lockScreen.classList.add("hidden");
+      afterUnlock(); // Load profile & social AFTER confirming access
       return;
     }
 
@@ -1559,8 +1568,14 @@ document.addEventListener("DOMContentLoaded", () => {
       if (passwordInput.value.trim() === CORRECT_PASSWORD) {
         safeStorage.setItem("medstudy_authorized", "true");
         if (lockScreen) {
-          lockScreen.classList.add("hidden");
+          lockScreen.style.transition = "opacity 0.4s";
+          lockScreen.style.opacity = "0";
+          setTimeout(() => {
+            lockScreen.classList.add("hidden");
+            lockScreen.style.opacity = "";
+          }, 400);
         }
+        afterUnlock(); // Load profile & social after successful unlock
       } else {
         // Shake animation for incorrect password
         if (lockCard) {
@@ -3029,60 +3044,74 @@ document.addEventListener("DOMContentLoaded", () => {
     forumPosts: 0
   };
 
-  window.loadUserProfile = async function() {
-    const token = safeStorage.getItem("medstudy_jwt_token");
-    if (token) {
+  window.loadUserProfile = function() {
+    // First, always try loading from local storage (works without backend)
+    const stored = safeStorage.getItem("medstudy_user_profile");
+    if (stored) {
       try {
-        const res = await fetch("http://localhost:5000/api/auth/me", {
-          headers: { "Authorization": `Bearer ${token}` }
-        });
-        const data = await res.json();
-        if (data.user) {
-          state.userProfile = data.user;
-          state.level = data.user.level || 1;
-          state.xp = data.user.xp || 0;
-          initSocket();
-        }
-      } catch (err) {
-        console.warn("Бэкенд недоступен, загружаем локальный профиль.");
-        const stored = safeStorage.getItem("medstudy_user_profile");
-        if (stored) state.userProfile = JSON.parse(stored);
-      }
-    } else {
-      const modal = document.getElementById("account-creation-modal");
-      if (modal) {
-        modal.classList.remove("hidden");
+        const parsed = JSON.parse(stored);
+        state.userProfile = parsed;
+        state.level = parsed.level || 1;
+        state.xp = parsed.xp || 0;
+      } catch(e) {
+        console.warn("Профиль повреждён, сброс.");
+        safeStorage.removeItem("medstudy_user_profile");
       }
     }
+
+    // If no local profile exists, show account creation modal
+    if (!safeStorage.getItem("medstudy_user_profile")) {
+      const modal = document.getElementById("account-creation-modal");
+      if (modal) modal.style.display = "flex";
+    }
+
     syncSocialStats();
     renderProfileView();
-  };
 
-  async function saveUserProfile() {
-    state.userProfile.level = state.level;
-    state.userProfile.xp = state.xp;
-    safeStorage.setItem("medstudy_user_profile", JSON.stringify(state.userProfile));
-
+    // Try to sync with backend in background (non-blocking)
     const token = safeStorage.getItem("medstudy_jwt_token");
     if (token) {
-      try {
-        await fetch("http://localhost:5000/api/auth/update", {
-          method: "POST",
-          headers: {
-            "Content-Type": "application/json",
-            "Authorization": `Bearer ${token}`
-          },
-          body: JSON.stringify({
-            xp: state.xp,
-            level: state.level,
-            studiedCardsCount: state.studiedCardsCount,
-            solvedCasesCount: state.solvedCasesCount,
-            completedTopicsCount: state.completedTopics ? state.completedTopics.length : 0
-          })
-        });
-      } catch (err) {
-        console.warn("Ошибка синхронизации профиля с сервером:", err);
-      }
+      fetch("http://localhost:5000/api/auth/me", {
+        headers: { "Authorization": `Bearer ${token}` }
+      })
+      .then(res => res.json())
+      .then(data => {
+        if (data.user) {
+          state.userProfile = data.user;
+          state.level = data.user.level || state.level;
+          state.xp = data.user.xp || state.xp;
+          initSocket();
+          saveUserProfile();
+          renderProfileView();
+        }
+      })
+      .catch(() => {});
+    }
+  };
+
+  function saveUserProfile() {
+    state.userProfile.level = state.level;
+    state.userProfile.xp = state.xp;
+    // Synchronous local save — always works
+    safeStorage.setItem("medstudy_user_profile", JSON.stringify(state.userProfile));
+
+    // Background sync with backend (fire and forget)
+    const token = safeStorage.getItem("medstudy_jwt_token");
+    if (token) {
+      fetch("http://localhost:5000/api/auth/update", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "Authorization": `Bearer ${token}`
+        },
+        body: JSON.stringify({
+          xp: state.xp,
+          level: state.level,
+          studiedCardsCount: state.studiedCardsCount,
+          solvedCasesCount: state.solvedCasesCount,
+          completedTopicsCount: state.completedTopics ? state.completedTopics.length : 0
+        })
+      }).catch(() => {});
     }
   }
 
@@ -3099,21 +3128,21 @@ document.addEventListener("DOMContentLoaded", () => {
     saveUserProfile();
   }
 
-  // Account Creation Form handlers
+  // Account Creation Form handler
   const accForm = document.getElementById("account-creation-form");
   if (accForm) {
-    accForm.onsubmit = async (e) => {
+    accForm.onsubmit = (e) => {
       e.preventDefault();
       const usernameInput = document.getElementById("acc-username");
       const specialtyInput = document.getElementById("acc-specialty");
       const mottoInput = document.getElementById("acc-motto");
       
       const selectedAvatarBtn = document.querySelector("#avatar-selector .avatar-opt.active");
-      const avatarEmoji = selectedAvatarBtn ? selectedAvatarBtn.textContent : "🧑‍⚕️";
+      const avatarEmoji = selectedAvatarBtn ? selectedAvatarBtn.textContent.trim() : "🧑‍⚕️";
       
-      const username = usernameInput.value || "Студент";
-      const specialty = specialtyInput.value || "Лечебное дело";
-      const motto = mottoInput.value || "Учеба и только учеба!";
+      const username = (usernameInput && usernameInput.value.trim()) ? usernameInput.value.trim() : "Студент";
+      const specialty = (specialtyInput && specialtyInput.value.trim()) ? specialtyInput.value.trim() : "Лечебное дело";
+      const motto = (mottoInput && mottoInput.value.trim()) ? mottoInput.value.trim() : "Учеба и только учеба!";
       
       state.userProfile.username = username;
       state.userProfile.specialty = specialty;
@@ -3121,12 +3150,17 @@ document.addEventListener("DOMContentLoaded", () => {
       state.userProfile.avatar = avatarEmoji;
       state.userProfile.level = 1;
       state.userProfile.xp = 0;
+      state.userProfile.casesSolved = 0;
+      state.userProfile.quizzesSolved = 0;
+      state.userProfile.duelsWon = 0;
+      state.userProfile.forumPosts = 0;
 
-      // Save locally first so the UI responds instantly
+      // Save locally IMMEDIATELY (synchronous, no await)
       saveUserProfile();
       
+      // Close modal instantly
       const modal = document.getElementById("account-creation-modal");
-      if (modal) modal.classList.add("hidden");
+      if (modal) modal.style.display = "none";
       
       updateProfileUI();
       renderProfileView();
@@ -3134,7 +3168,7 @@ document.addEventListener("DOMContentLoaded", () => {
       unlockAchievement("account_created");
       showToast("🎉 Аккаунт успешно создан! Добро пожаловать.");
 
-      // Call Backend auth in the background
+      // Background backend registration (won't block UI)
       fetch("http://localhost:5000/api/auth/register", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -3150,15 +3184,10 @@ document.addEventListener("DOMContentLoaded", () => {
       .then(data => {
         if (data.token) {
           safeStorage.setItem("medstudy_jwt_token", data.token);
-          state.userProfile = data.user;
           initSocket();
-          saveUserProfile();
-          renderProfileView();
         }
       })
-      .catch(err => {
-        console.warn("Бэкенд недоступен, работаем в локальном режиме.");
-      });
+      .catch(() => {});
     };
   }
 
