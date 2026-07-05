@@ -22,6 +22,13 @@ document.addEventListener("DOMContentLoaded", () => {
         console.warn(`localStorage write blocked for key '${key}', saving in memory:`, e);
         this.memoryStore[key] = String(value);
       }
+    },
+    removeItem(key) {
+      try {
+        localStorage.removeItem(key);
+      } catch (e) {
+        delete this.memoryStore[key];
+      }
     }
   };
 
@@ -34,6 +41,9 @@ document.addEventListener("DOMContentLoaded", () => {
       return fallback;
     }
   }
+
+  const API_URL = "http://localhost:5000/api";
+  let socket = null;
 
   // --- APPLICATION STATE ---
   const state = {
@@ -69,11 +79,16 @@ document.addEventListener("DOMContentLoaded", () => {
 
     // 3D Anatomy state
     selectedOrganId: null,
+    xrayMode: false,
+    rotationEnabled: false,
 
     // Clinical Quest state
     currentQuestIndex: 0,
     currentQuestSymptomCount: 1,
-    questCompleted: false
+    questCompleted: false,
+
+    // Lab Analyzer state
+    currentLabIndex: 0
   };
 
   // --- RANKS CONFIGURATION ---
@@ -228,6 +243,8 @@ document.addEventListener("DOMContentLoaded", () => {
     setup3DAnatomy();
     setupQuestListeners();
     initConceptMap();
+    loadUserProfile();
+    setupSocialSystem();
   }
 
   // Populate dynamic select dropdowns with all systems from data.js
@@ -406,6 +423,17 @@ document.addEventListener("DOMContentLoaded", () => {
       startQuestSession();
     } else if (viewId === "concept-map") {
       initConceptMap();
+    } else if (viewId === "lab-analyzer") {
+      initLabAnalyzer();
+    } else if (viewId === "calculator") {
+      initClinicalCalculator();
+    } else if (viewId === "profile") {
+      syncSocialStats();
+      renderProfileView();
+    } else if (viewId === "community") {
+      renderFriendsList();
+    } else if (viewId === "forum") {
+      renderForumThreads();
     }
   }
 
@@ -777,6 +805,16 @@ document.addEventListener("DOMContentLoaded", () => {
         fcFilterSubject.addEventListener("change", loadFlashcardDeck);
         fcFilterType.addEventListener("change", loadFlashcardDeck);
 
+        const fcSocialDuelBtn = document.getElementById("btn-fc-social-duel");
+        if (fcSocialDuelBtn) {
+          fcSocialDuelBtn.onclick = () => {
+            const friendId = state.activeFriendId || "pathphys_dmitry";
+            navigateToView("community");
+            openChatWithFriend(friendId);
+            startCardDuel(friendId);
+          };
+        }
+
         fcBtnKnow.addEventListener("click", () => {
           addXP(15); // +15 XP per card known
           state.studiedCardsCount++;
@@ -901,6 +939,15 @@ document.addEventListener("DOMContentLoaded", () => {
       // --- QUIZZES MODULE ---
       function setupQuizListeners() {
         btnStartQuiz.addEventListener("click", startQuiz);
+        const quizSocialCoopBtn = document.getElementById("btn-quiz-social-coop");
+        if (quizSocialCoopBtn) {
+          quizSocialCoopBtn.onclick = () => {
+            const friendId = state.activeFriendId || "sklif_anya";
+            navigateToView("community");
+            openChatWithFriend(friendId);
+            startCoopQuiz(friendId);
+          };
+        }
         qzBtnNext.addEventListener("click", nextQuizQuestion);
         qzBtnRestart.addEventListener("click", () => {
           quizResultsPanel.classList.add("hidden");
@@ -1131,6 +1178,45 @@ document.addEventListener("DOMContentLoaded", () => {
           }
         });
 
+        const btnSocialCouncil = document.getElementById("btn-case-social-council");
+        if (btnSocialCouncil) {
+          btnSocialCouncil.onclick = () => {
+            if (!state.activeCase) return;
+            const step = state.activeCase.steps[state.activeCaseStepIndex];
+            
+            const buddies = {
+              "neuro_mary": "🧠 Мария_Нейро (Невролог):",
+              "cardio_ivan": "🫀 Иван_Кардио (Кардиолог):",
+              "sklif_anya": "🩺 Аня_Склиф (Реаниматолог):",
+              "pharma_kirill": "💊 Кирилл_Фарма (Фармаколог):"
+            };
+            
+            let botId = "sklif_anya";
+            const title = state.activeCase.title.toLowerCase();
+            if (title.includes("инфаркт") || title.includes("стенокард") || title.includes("аритми")) {
+              botId = "cardio_ivan";
+            } else if (title.includes("инсульт") || title.includes("мозг") || title.includes("невралг")) {
+              botId = "neuro_mary";
+            } else if (title.includes("отравл") || title.includes("терапи") || title.includes("дозир")) {
+              botId = "pharma_kirill";
+            }
+            
+            const buddyLabel = buddies[botId];
+            const correctOptText = step.options[step.correctOptionIndex];
+            
+            const hints = [
+              `Хм, обрати внимание на "${correctOptText.toLowerCase()}". В клинической практике это наиболее обоснованно!`,
+              `Я считаю, здесь правильное решение - "${correctOptText}", так как патогенетически это сразу устранит ключевой синдром.`,
+              `Коллега, не забывай про противопоказания! Я бы выбрала "${correctOptText}".`
+            ];
+            
+            const selectedHint = hints[state.activeCaseStepIndex % hints.length];
+            state.casePointsEarned = Math.max(50, state.casePointsEarned - 25);
+            
+            alert(`📞 Срочный консилиум с коллегами:\n\n${buddyLabel} "${selectedHint}"\n\n(Штраф за подсказку: -25 баллов за кейс. Текущая награда: ${state.casePointsEarned} XP)`);
+          };
+        }
+
         document.querySelectorAll(".back-to-cases-btn").forEach(btn => {
           btn.addEventListener("click", closeCaseWorkspace);
         });
@@ -1157,19 +1243,39 @@ document.addEventListener("DOMContentLoaded", () => {
       function renderBooksList() {
         if (!booksListContainer) return;
         booksListContainer.innerHTML = "";
+        
+        const buddyReaders = {
+          anatomy: "Кирилл_Фарма читает эту книгу 📖",
+          histology: "Мария_Нейро читает эту книгу 📖",
+          physiology: "Дмитрий_ПатФиз читает эту книгу 📖",
+          biochemistry: "Кирилл_Фарма читает эту книгу 📖",
+          pathophysiology: "Дмитрий_ПатФиз читает эту книгу 📖",
+          pathology: "Аня_Склиф читает эту книгу 📖",
+          pharmacology: "Кирилл_Фарма читает эту книгу 📖"
+        };
+
         MedData.books.forEach(book => {
           const subName = MedData.subjects[book.subjectId].name;
+          const readerText = buddyReaders[book.subjectId] || "Никто из друзей не читает эту книгу";
           
           const card = document.createElement("div");
           card.className = "book-card";
+          card.style.cursor = "pointer";
           card.innerHTML = `
             <div class="book-title-row">
               <h4>${book.title}</h4>
-              <span style="font-size:10px; color:var(--text-dim); text-transform:uppercase;">${subName}</span>
+              <span style="font-size:10px; color:var(--accent-cyan); text-transform:uppercase;">${subName}</span>
             </div>
             <p class="book-author">Автор: ${book.author}</p>
             <p class="book-desc">${book.description}</p>
+            <div style="font-size:11px; color:var(--text-muted); font-style:italic; margin-top: 10px; display: flex; align-items: center; gap: 4px;">
+              <span>👥</span> <span>${readerText}</span>
+            </div>
+            <div style="margin-top: 10px; text-align: right;"><span class="btn btn-outline btn-xs" style="font-size: 11px; padding: 3px 8px;">📖 Читать книгу</span></div>
           `;
+          card.addEventListener("click", () => {
+            openBookReader(book.subjectId);
+          });
           booksListContainer.appendChild(card);
         });
       }
@@ -1210,28 +1316,58 @@ document.addEventListener("DOMContentLoaded", () => {
 
       function setupLibraryListeners() {
         if (!addResourceForm) return;
-        addResourceForm.addEventListener("submit", (e) => {
+        addResourceForm.addEventListener("submit", async (e) => {
           e.preventDefault();
           
           const title = document.getElementById("res-title").value.trim();
           const subjectId = document.getElementById("res-subject").value;
-          const link = document.getElementById("res-link").value.trim();
+          const fileInput = document.getElementById("res-file");
 
-          if (title && link) {
-            state.userResources.push({ title, subjectId, link });
-            safeStorage.setItem("med_resources", JSON.stringify(state.userResources));
-            
-            // Reset form
-            addResourceForm.reset();
-            
-            renderUserResources();
-            addXP(30); // small XP bonus for uploading resources
+          if (title && fileInput && fileInput.files.length > 0) {
+            const formData = new FormData();
+            formData.append("bookFile", fileInput.files[0]);
+            formData.append("title", title);
+            formData.append("subjectId", subjectId);
+
+            const token = safeStorage.getItem("medstudy_jwt_token");
+            try {
+              showToast("Загрузка книги на сервер...");
+              const res = await fetch("http://localhost:5000/api/books/upload", {
+                method: "POST",
+                headers: {
+                  "Authorization": `Bearer ${token}`
+                },
+                body: formData
+              });
+              const data = await res.json();
+              if (data.success) {
+                state.userResources.push({
+                  title: data.book.title,
+                  subjectId: data.book.subjectId,
+                  link: `http://localhost:5000/uploads/${data.book.filename}`
+                });
+                safeStorage.setItem("med_resources", JSON.stringify(state.userResources));
+                addResourceForm.reset();
+                renderUserResources();
+                addXP(50);
+                showToast("🎉 Книга успешно загружена на бэкенд!");
+              } else {
+                showToast(`Ошибка загрузки: ${data.error}`);
+              }
+            } catch (err) {
+              console.error(err);
+              showToast("Сервер недоступен, книга добавлена локально.");
+              state.userResources.push({ title, subjectId, link: "Локальный файл" });
+              safeStorage.setItem("med_resources", JSON.stringify(state.userResources));
+              addResourceForm.reset();
+              renderUserResources();
+            }
           }
         });
       }
 
       // --- INTERACTIVE 3D ANATOMY (Three.js WebGL) ---
-      let scene, camera, renderer, controls;
+      let scene, camera, renderer, controls, bodyMesh, skeletonGroup, lungsGroup, kidneysGroup, mainAnatomyGroup;
       const organMeshes = {};
 
       const organNames = {
@@ -1247,50 +1383,25 @@ document.addEventListener("DOMContentLoaded", () => {
       window.selectOrgan = function(organId) {
         state.selectedOrganId = organId;
         
-        // Highlight the clicked 3D mesh, dim others
-        Object.keys(organMeshes).forEach(key => {
-          const mesh = organMeshes[key];
-          if (!mesh) return;
-
-          const isSelected = (key === organId);
-          
-          mesh.traverse(child => {
-            if (child.isMesh && child.material) {
-              if (isSelected) {
-                // Bright glow and fully opaque
-                if (child.material.emissive) {
-                  child.material.emissive.setHex(0x555555);
-                }
-                child.material.opacity = 1.0;
-              } else {
-                // Dim and semi-transparent
-                if (child.material.emissive) {
-                  if (key === "heart") child.material.emissive.setHex(0x401010);
-                  else if (key === "brain") child.material.emissive.setHex(0x301020);
-                  else if (key === "lungs") child.material.emissive.setHex(0x052a35);
-                  else if (key === "stomach") child.material.emissive.setHex(0x302505);
-                  else if (key === "liver") child.material.emissive.setHex(0x052a1a);
-                  else if (key === "kidneys") child.material.emissive.setHex(0x301505);
-                  else child.material.emissive.setHex(0x000000);
-                }
-                child.material.opacity = 0.4;
-              }
-            }
-          });
-
-          // Highlight scale change
-          if (isSelected) {
-            if (key === "brain") mesh.scale.set(1.2, 0.9, 1.3);
-            else if (key === "stomach") mesh.scale.set(1.3, 1.1, 1.1);
-            else if (key === "liver") mesh.scale.set(1.6, 0.8, 1.0);
-            else mesh.scale.set(1.1, 1.1, 1.1);
-          } else {
-            if (key === "brain") mesh.scale.set(1.1, 0.8, 1.2);
-            else if (key === "stomach") mesh.scale.set(1.2, 1, 1);
-            else if (key === "liver") mesh.scale.set(1.5, 0.7, 0.9);
-            else mesh.scale.set(1.0, 1.0, 1.0);
-          }
+        // Highlight active selector button styling
+        document.querySelectorAll(".organ-sel-btn").forEach(btn => {
+          btn.classList.toggle("active", btn.getAttribute("data-organ") === organId);
         });
+
+        // Show active study buddy
+        const studyBuddyMap = {
+          brain: "Мария_Нейро 🧠 сейчас тоже изучает эту тему!",
+          heart: "Иван_Кардио 🫀 сейчас тоже изучает эту тему!",
+          lungs: "Дмитрий_ПатФиз 🔬 сейчас тоже изучает эту тему!",
+          stomach: "Аня_Склиф 🩺 сейчас тоже изучает эту тему!",
+          liver: "Кирилл_Фарма 💊 сейчас тоже изучает эту тему!",
+          kidneys: "Аня_Склиф 🩺 сейчас тоже изучает эту тему!",
+          skeleton: "Кирилл_Фарма 💊 сейчас тоже изучает эту тему!"
+        };
+        const activeStudyText = document.getElementById("organ-active-study-text");
+        if (activeStudyText) {
+          activeStudyText.textContent = studyBuddyMap[organId] || "Никто из друзей не изучает эту тему сейчас.";
+        }
 
     // Toggle details panels
     const detailsEmpty = document.getElementById("anatomy-details-empty");
@@ -1344,413 +1455,85 @@ document.addEventListener("DOMContentLoaded", () => {
   }
 
   function setup3DAnatomy() {
-    const container = document.getElementById("anatomy-canvas-container");
-    if (!container) return;
-
-    // 1. Initialise WebGL Renderer
-    const width = container.clientWidth || 350;
-    const height = container.clientHeight || 500;
-
-    renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true });
-    renderer.setSize(width, height);
-    renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
-    
-    // Clear old canvases
-    container.innerHTML = "";
-    container.appendChild(renderer.domElement);
-
-    // 2. Scene & Camera
-    scene = new THREE.Scene();
-    camera = new THREE.PerspectiveCamera(45, width / height, 0.1, 100);
-    camera.position.set(0, 2, 9);
-
-    // 3. OrbitControls
-    controls = new THREE.OrbitControls(camera, renderer.domElement);
-    controls.enableDamping = true;
-    controls.dampingFactor = 0.05;
-    controls.minDistance = 2.5;
-    controls.maxDistance = 12;
-    controls.target.set(0, 1.2, 0);
-
-    // 4. Lights
-    const ambientLight = new THREE.AmbientLight(0xffffff, 0.35);
-    scene.add(ambientLight);
-
-    const dirLight1 = new THREE.DirectionalLight(0x00f2fe, 0.85);
-    dirLight1.position.set(5, 10, 7);
-    scene.add(dirLight1);
-
-    const dirLight2 = new THREE.DirectionalLight(0xec4899, 0.45);
-    dirLight2.position.set(-5, -5, -5);
-    scene.add(dirLight2);
-
-    // 5. Holographic Mannequin Envelope (Wireframe)
-    const bodyGeo = new THREE.CylinderGeometry(1.4, 0.8, 4.8, 12, 6, true);
-    const bodyMat = new THREE.MeshBasicMaterial({
-      color: 0x00f2fe,
-      wireframe: true,
-      transparent: true,
-      opacity: 0.06,
-      side: THREE.DoubleSide
+    // Select organ buttons in directory
+    document.querySelectorAll(".organ-sel-btn").forEach(btn => {
+      btn.onclick = () => {
+        const organId = btn.getAttribute("data-organ");
+        selectOrgan(organId);
+      };
     });
-    const bodyMesh = new THREE.Mesh(bodyGeo, bodyMat);
-    bodyMesh.position.set(0, 1.2, 0);
-    scene.add(bodyMesh);
 
-    // Limb outline lines for a stylized hologram
-    const limbMat = new THREE.LineBasicMaterial({ color: 0x00f2fe, transparent: true, opacity: 0.12 });
-    
-    const leftArmGeo = new THREE.BufferGeometry().setFromPoints([
-      new THREE.Vector3(-1.4, 3.2, 0),
-      new THREE.Vector3(-2.8, 1.8, 0),
-      new THREE.Vector3(-3.2, 0.5, 0)
-    ]);
-    scene.add(new THREE.Line(leftArmGeo, limbMat));
-
-    const rightArmGeo = new THREE.BufferGeometry().setFromPoints([
-      new THREE.Vector3(1.4, 3.2, 0),
-      new THREE.Vector3(2.8, 1.8, 0),
-      new THREE.Vector3(3.2, 0.5, 0)
-    ]);
-    scene.add(new THREE.Line(rightArmGeo, limbMat));
-
-    const leftLegGeo = new THREE.BufferGeometry().setFromPoints([
-      new THREE.Vector3(-0.7, -1.2, 0),
-      new THREE.Vector3(-1.0, -3.2, 0),
-      new THREE.Vector3(-1.2, -5.2, 0)
-    ]);
-    scene.add(new THREE.Line(leftLegGeo, limbMat));
-
-    const rightLegGeo = new THREE.BufferGeometry().setFromPoints([
-      new THREE.Vector3(0.7, -1.2, 0),
-      new THREE.Vector3(1.0, -3.2, 0),
-      new THREE.Vector3(1.2, -5.2, 0)
-    ]);
-    scene.add(new THREE.Line(rightLegGeo, limbMat));
-
-    // 6. Skeleton Group (White bone styling)
-    const skeletonGroup = new THREE.Group();
-    skeletonGroup.userData = { organId: "skeleton" };
-    scene.add(skeletonGroup);
-
-    // Skull
-    const skullGeo = new THREE.SphereGeometry(0.75, 12, 12);
-    const skullMat = new THREE.MeshPhongMaterial({ color: 0xcccccc, wireframe: true, transparent: true, opacity: 0.45 });
-    const skullMesh = new THREE.Mesh(skullGeo, skullMat);
-    skullMesh.position.set(0, 4.4, 0);
-    skeletonGroup.add(skullMesh);
-
-    // Spine
-    const spineMat = new THREE.MeshPhongMaterial({ color: 0xdddddd, wireframe: true });
-    for (let i = 0; i < 18; i++) {
-      const vertGeo = new THREE.BoxGeometry(0.35, 0.1, 0.25);
-      const vertMesh = new THREE.Mesh(vertGeo, spineMat);
-      vertMesh.position.set(0, 3.4 - i * 0.22, -0.18);
-      skeletonGroup.add(vertMesh);
+    // Discuss organ button
+    const discussBtn = document.getElementById("btn-organ-discuss");
+    if (discussBtn) {
+      discussBtn.onclick = () => {
+        const organId = state.selectedOrganId || "brain";
+        const buddyIdMap = {
+          brain: "neuro_mary",
+          heart: "cardio_ivan",
+          lungs: "pathphys_dmitry",
+          stomach: "sklif_anya",
+          liver: "pharma_kirill",
+          kidneys: "sklif_anya",
+          skeleton: "pharma_kirill"
+        };
+        const buddyId = buddyIdMap[organId] || "sklif_anya";
+        navigateToView("community");
+        openChatWithFriend(buddyId);
+      };
     }
 
-    // Ribs
-    const ribMat = new THREE.LineBasicMaterial({ color: 0xdddddd });
-    for (let i = 0; i < 7; i++) {
-      const radius = 0.9 - i * 0.04;
-      const points = [];
-      for (let j = 0; j <= 24; j++) {
-        const theta = (j / 24) * Math.PI * 2;
-        points.push(new THREE.Vector3(Math.cos(theta) * radius, 2.9 - i * 0.24, Math.sin(theta) * radius - 0.1));
-      }
-      const ribGeo = new THREE.BufferGeometry().setFromPoints(points);
-      skeletonGroup.add(new THREE.Line(ribGeo, ribMat));
-    }
-
-    // Pelvis ring
-    const pelvisPoints = [];
-    for (let j = 0; j <= 24; j++) {
-      const theta = (j / 24) * Math.PI * 2;
-      pelvisPoints.push(new THREE.Vector3(Math.cos(theta) * 0.95, -0.8, Math.sin(theta) * 0.7));
-    }
-    const pelvisGeo = new THREE.BufferGeometry().setFromPoints(pelvisPoints);
-    skeletonGroup.add(new THREE.Line(pelvisGeo, ribMat));
-
-    organMeshes["skeleton"] = skeletonGroup;
-
-    // 7. 3D Organs Generation
-    // Brain (Pink/Magenta)
-    const brainGeo = new THREE.SphereGeometry(0.6, 16, 16);
-    brainGeo.scale(1.1, 0.8, 1.2);
-    const brainMat = new THREE.MeshPhongMaterial({
-      color: 0xec4899,
-      emissive: 0x301020,
-      shininess: 90,
-      transparent: true,
-      opacity: 0.85
-    });
-    const brainMesh = new THREE.Mesh(brainGeo, brainMat);
-    brainMesh.position.set(0, 4.5, 0.08);
-    brainMesh.userData = { organId: "brain" };
-    scene.add(brainMesh);
-    organMeshes["brain"] = brainMesh;
-
-    // Heart (Red)
-    const heartGroup = new THREE.Group();
-    heartGroup.position.set(-0.2, 2.1, 0.25);
-    heartGroup.userData = { organId: "heart" };
-    
-    const heartMat = new THREE.MeshPhongMaterial({
-      color: 0xef4444,
-      emissive: 0x401010,
-      shininess: 90,
-      transparent: true,
-      opacity: 0.85
-    });
-    const leftV = new THREE.Mesh(new THREE.SphereGeometry(0.3, 12, 12), heartMat);
-    leftV.position.set(-0.1, 0, 0);
-    leftV.scale.set(1, 1.25, 1);
-    heartGroup.add(leftV);
-
-    const rightV = new THREE.Mesh(new THREE.SphereGeometry(0.27, 12, 12), heartMat);
-    rightV.position.set(0.1, 0.04, 0);
-    rightV.scale.set(1, 1.15, 1);
-    heartGroup.add(rightV);
-
-    const aorta = new THREE.Mesh(new THREE.CylinderGeometry(0.07, 0.07, 0.5, 8), heartMat);
-    aorta.position.set(0.04, 0.35, -0.08);
-    aorta.rotation.z = -0.15;
-    heartGroup.add(aorta);
-
-    scene.add(heartGroup);
-    organMeshes["heart"] = heartGroup;
-
-    // Lungs (Cyan)
-    const lungsGroup = new THREE.Group();
-    lungsGroup.position.set(0, 2.1, 0);
-    lungsGroup.userData = { organId: "lungs" };
-
-    const lungsMat = new THREE.MeshPhongMaterial({
-      color: 0x06b6d4,
-      emissive: 0x052a35,
-      shininess: 60,
-      transparent: true,
-      opacity: 0.75
-    });
-    const leftLung = new THREE.Mesh(new THREE.CylinderGeometry(0.3, 0.4, 1.2, 12), lungsMat);
-    leftLung.position.set(-0.6, 0, 0.08);
-    leftLung.scale.set(0.9, 1, 0.7);
-    lungsGroup.add(leftLung);
-
-    const rightLung = new THREE.Mesh(new THREE.CylinderGeometry(0.3, 0.4, 1.2, 12), lungsMat);
-    rightLung.position.set(0.6, 0, 0.08);
-    rightLung.scale.set(0.9, 1, 0.7);
-    lungsGroup.add(rightLung);
-
-    scene.add(lungsGroup);
-    organMeshes["lungs"] = lungsGroup;
-
-    // Stomach (Yellow)
-    const stomachGeo = new THREE.TorusGeometry(0.25, 0.12, 8, 20, Math.PI * 1.2);
-    const stomachMat = new THREE.MeshPhongMaterial({
-      color: 0xeab308,
-      emissive: 0x302505,
-      shininess: 50,
-      transparent: true,
-      opacity: 0.8
-    });
-    const stomachMesh = new THREE.Mesh(stomachGeo, stomachMat);
-    stomachMesh.position.set(0.25, 1.0, 0.28);
-    stomachMesh.rotation.set(0, 0, -Math.PI / 3);
-    stomachMesh.scale.set(1.2, 1, 1);
-    stomachMesh.userData = { organId: "stomach" };
-    scene.add(stomachMesh);
-    organMeshes["stomach"] = stomachMesh;
-
-    // Liver (Green)
-    const liverGeo = new THREE.ConeGeometry(0.48, 0.8, 4);
-    liverGeo.scale(1.4, 0.6, 0.85);
-    const liverMat = new THREE.MeshPhongMaterial({
-      color: 0x10b981,
-      emissive: 0x052a1a,
-      shininess: 50,
-      transparent: true,
-      opacity: 0.85
-    });
-    const liverMesh = new THREE.Mesh(liverGeo, liverMat);
-    liverMesh.position.set(-0.38, 1.05, 0.2);
-    liverMesh.rotation.set(0.25, 0.15, -0.45);
-    liverMesh.userData = { organId: "liver" };
-    scene.add(liverMesh);
-    organMeshes["liver"] = liverMesh;
-
-    // Kidneys (Orange)
-    const kidneysGroup = new THREE.Group();
-    kidneysGroup.position.set(0, 0.9, -0.3);
-    kidneysGroup.userData = { organId: "kidneys" };
-
-    const kidneyMat = new THREE.MeshPhongMaterial({
-      color: 0xf97316,
-      emissive: 0x301505,
-      shininess: 70,
-      transparent: true,
-      opacity: 0.85
-    });
-    const leftKidney = new THREE.Mesh(new THREE.SphereGeometry(0.15, 12, 12), kidneyMat);
-    leftKidney.position.set(-0.35, 0, 0);
-    leftKidney.scale.set(1, 1.4, 0.75);
-    kidneysGroup.add(leftKidney);
-
-    const rightKidney = new THREE.Mesh(new THREE.SphereGeometry(0.15, 12, 12), kidneyMat);
-    rightKidney.position.set(0.35, 0, 0);
-    rightKidney.scale.set(1, 1.4, 0.75);
-    kidneysGroup.add(rightKidney);
-
-    scene.add(kidneysGroup);
-    organMeshes["kidneys"] = kidneysGroup;
-
-    // 8. Raycasting & Tooltips
-    const raycaster = new THREE.Raycaster();
-    const mouse = new THREE.Vector2();
-    const tooltip = document.getElementById("anatomy-tooltip");
-
-    let currentHoveredOrgan = null;
-
-    container.addEventListener("mousemove", (event) => {
-      const rect = renderer.domElement.getBoundingClientRect();
-      mouse.x = ((event.clientX - rect.left) / rect.width) * 2 - 1;
-      mouse.y = -((event.clientY - rect.top) / rect.height) * 2 + 1;
-
-      raycaster.setFromCamera(mouse, camera);
-
-      const interactable = [
-        organMeshes["brain"],
-        organMeshes["heart"],
-        organMeshes["lungs"],
-        organMeshes["stomach"],
-        organMeshes["liver"],
-        organMeshes["kidneys"],
-        organMeshes["skeleton"]
-      ];
-
-      const intersects = raycaster.intersectObjects(interactable, true);
-
-      if (intersects.length > 0) {
-        let obj = intersects[0].object;
-        while (obj && !obj.userData.organId) {
-          obj = obj.parent;
-        }
-
-        if (obj && obj.userData && obj.userData.organId) {
-          const organId = obj.userData.organId;
-          
-          if (currentHoveredOrgan !== organId) {
-            currentHoveredOrgan = organId;
-            if (tooltip) {
-              tooltip.textContent = organNames[organId];
-              tooltip.style.borderColor = "var(--accent-cyan)";
-            }
-          }
+    // Audio guide handler
+    const audioBtn = document.getElementById("btn-audio-guide");
+    if (audioBtn) {
+      let speechUtterance = null;
+      audioBtn.onclick = () => {
+        if (window.speechSynthesis && window.speechSynthesis.speaking) {
+          window.speechSynthesis.cancel();
+          audioBtn.style.boxShadow = "0 0 10px rgba(0, 242, 254, 0.1)";
+          audioBtn.style.background = "rgba(0, 242, 254, 0.05)";
           return;
         }
-      }
-
-      if (currentHoveredOrgan !== null) {
-        currentHoveredOrgan = null;
-        if (tooltip) {
-          if (state.selectedOrganId) {
-            tooltip.textContent = organNames[state.selectedOrganId];
-          } else {
-            tooltip.textContent = "Наведите на орган";
+        
+        const contentSheet = document.getElementById("det-textbook-content");
+        if (contentSheet) {
+          const rawText = contentSheet.innerText || "";
+          if (rawText.trim().length > 0) {
+            const cleanText = rawText
+              .replace(/\\\(.*?\\\)/g, "")
+              .replace(/\$\$.*?\$\$/g, "")
+              .replace(/<\/?[^>]+(>|$)/g, "");
+            
+            speechUtterance = new SpeechSynthesisUtterance(cleanText);
+            speechUtterance.lang = "ru-RU";
+            
+            speechUtterance.onend = () => {
+              audioBtn.style.boxShadow = "0 0 10px rgba(0, 242, 254, 0.1)";
+              audioBtn.style.background = "rgba(0, 242, 254, 0.05)";
+            };
+            
+            audioBtn.style.background = "var(--accent-pink)";
+            audioBtn.style.boxShadow = "0 0 15px var(--accent-pink)";
+            window.speechSynthesis.speak(speechUtterance);
           }
         }
-      }
-    });
+      };
+    }
 
-    container.addEventListener("click", (event) => {
-      const rect = renderer.domElement.getBoundingClientRect();
-      mouse.x = ((event.clientX - rect.left) / rect.width) * 2 - 1;
-      mouse.y = -((event.clientY - rect.top) / rect.height) * 2 + 1;
-
-      raycaster.setFromCamera(mouse, camera);
-
-      const interactable = [
-        organMeshes["brain"],
-        organMeshes["heart"],
-        organMeshes["lungs"],
-        organMeshes["stomach"],
-        organMeshes["liver"],
-        organMeshes["kidneys"],
-        organMeshes["skeleton"]
-      ];
-
-      const intersects = raycaster.intersectObjects(interactable, true);
-
-      if (intersects.length > 0) {
-        let obj = intersects[0].object;
-        while (obj && !obj.userData.organId) {
-          obj = obj.parent;
-        }
-
-        if (obj && obj.userData && obj.userData.organId) {
-          const organId = obj.userData.organId;
-          selectOrgan(organId);
-        }
-      }
-    });
-
-    // 9. Organ Tabs Click handler
-    const tabs = document.querySelectorAll(".organ-tab");
-    tabs.forEach(tab => {
-      tab.addEventListener("click", () => {
-        tabs.forEach(t => t.classList.remove("active"));
+    // Tab buttons handler
+    document.querySelectorAll(".organ-tab").forEach(tab => {
+      tab.onclick = () => {
+        document.querySelectorAll(".organ-tab").forEach(t => t.classList.remove("active"));
         tab.classList.add("active");
-
-        if (state.selectedOrganId) {
-          renderOrganTabContent(state.selectedOrganId, tab.getAttribute("data-tab"));
-        }
-      });
+        
+        const organId = state.selectedOrganId || "brain";
+        const tabName = tab.getAttribute("data-tab");
+        renderOrganTabContent(organId, tabName);
+      };
     });
 
-    window.addEventListener("resize", onWindowResize);
-
-    function onWindowResize() {
-      if (!container || !renderer) return;
-      const w = container.clientWidth;
-      const h = container.clientHeight;
-      camera.aspect = w / h;
-      camera.updateProjectionMatrix();
-      renderer.setSize(w, h);
-    }
-
-    // 10. Frame Loop & Floating effect
-    let angle = 0;
-    function animate() {
-      requestAnimationFrame(animate);
-
-      angle += 0.025;
-      const floatOffset = Math.sin(angle) * 0.035;
-
-      // Gentle floating animation to make organs look alive
-      if (organMeshes["brain"]) organMeshes["brain"].position.y = 4.5 + floatOffset * 0.4;
-      if (organMeshes["heart"]) organMeshes["heart"].position.y = 2.1 + floatOffset;
-      if (organMeshes["lungs"]) lungsGroup.position.y = 2.1 + floatOffset;
-      if (organMeshes["stomach"]) organMeshes["stomach"].position.y = 1.0 - floatOffset * 0.6;
-      if (organMeshes["liver"]) organMeshes["liver"].position.y = 1.05 - floatOffset * 0.4;
-      if (organMeshes["kidneys"]) kidneysGroup.position.y = 0.9 + floatOffset * 0.3;
-
-      // Slow orbital rotation when not dragged
-      if (controls && controls.state === -1) {
-        bodyMesh.rotation.y += 0.0015;
-        skeletonGroup.rotation.y += 0.0015;
-        organMeshes["brain"].rotation.y += 0.0015;
-        organMeshes["heart"].rotation.y += 0.0015;
-        lungsGroup.rotation.y += 0.0015;
-        organMeshes["stomach"].rotation.y += 0.0015;
-        organMeshes["liver"].rotation.y += 0.0015;
-        kidneysGroup.rotation.y += 0.0015;
-      }
-
-      if (controls) controls.update();
-      if (renderer && scene && camera) renderer.render(scene, camera);
-    }
-
-    animate();
+    // Default load
+    selectOrgan("brain");
   }
 
   // --- ACCESS LOCK SCREEN LOGIC ---
@@ -1764,7 +1547,7 @@ document.addEventListener("DOMContentLoaded", () => {
     const CORRECT_PASSWORD = "0981"; // Default passcode
 
     // Check if already authorized in current browser session
-    if (localStorage.getItem("medstudy_authorized") === "true") {
+    if (safeStorage.getItem("medstudy_authorized") === "true") {
       if (lockScreen) {
         lockScreen.classList.add("hidden");
       }
@@ -1773,8 +1556,8 @@ document.addEventListener("DOMContentLoaded", () => {
 
     function checkPassword() {
       if (!passwordInput) return;
-      if (passwordInput.value === CORRECT_PASSWORD) {
-        localStorage.setItem("medstudy_authorized", "true");
+      if (passwordInput.value.trim() === CORRECT_PASSWORD) {
+        safeStorage.setItem("medstudy_authorized", "true");
         if (lockScreen) {
           lockScreen.classList.add("hidden");
         }
@@ -1816,8 +1599,19 @@ document.addEventListener("DOMContentLoaded", () => {
     state.questGuessedOptions = [];
     state.questCompleted = false;
     
+    const opponents = ["Мария_Нейро", "Иван_Кардио", "Дмитрий_ПатФиз", "Аня_Склиф"];
+    state.questOpponent = opponents[Math.floor(Math.random() * opponents.length)];
+    state.questOpponentState = "thinking";
+    
+    const opponentText = document.getElementById("quest-opponent-text");
+    if (opponentText) {
+      opponentText.textContent = `Соперник: ${state.questOpponent} (думает...)`;
+      opponentText.style.color = "var(--accent-pink)";
+    }
+
     generateQuestOptions();
     renderQuestCard();
+    triggerOpponentSimulation();
   }
 
   function generateQuestOptions() {
@@ -1834,6 +1628,38 @@ document.addEventListener("DOMContentLoaded", () => {
     // Combine correct answer and distractors, then shuffle
     const options = [quest.name, ...selectedDistractors];
     state.questActiveOptions = shuffleArray(options);
+  }
+
+  function triggerOpponentSimulation() {
+    if (state.questOpponentTimer) clearTimeout(state.questOpponentTimer);
+    if (state.questCompleted) return;
+
+    const guessDelay = 12000 + Math.random() * 8000;
+    
+    state.questOpponentTimer = setTimeout(() => {
+      if (state.questCompleted) return;
+      
+      const successChance = 0.4 + (state.currentQuestSymptomCount - 1) * 0.25;
+      const botGuessedRight = Math.random() < successChance;
+      
+      const opponentText = document.getElementById("quest-opponent-text");
+      if (botGuessedRight) {
+        state.questOpponentState = "guessed";
+        if (opponentText) {
+          opponentText.textContent = `Соперник: ${state.questOpponent} РАЗГАДАЛ диагноз! ⚡`;
+          opponentText.style.color = "var(--accent-pink)";
+        }
+        showToast(`⚠️ ${state.questOpponent} разгадал правильный диагноз! Дайте верный ответ быстрее!`);
+      } else {
+        state.questOpponentState = "incorrect";
+        if (opponentText) {
+          opponentText.textContent = `Соперник: ${state.questOpponent} дал неверную гипотезу! ❌`;
+          opponentText.style.color = "#ef4444";
+        }
+        showToast(`😅 ${state.questOpponent} выдвинул ложный диагноз. У вас есть шанс!`);
+        setTimeout(triggerOpponentSimulation, 5000);
+      }
+    }, guessDelay);
   }
 
   function renderQuestCard() {
@@ -1903,6 +1729,19 @@ document.addEventListener("DOMContentLoaded", () => {
     if (selectedOption === quest.name) {
       // Success!
       state.questCompleted = true;
+      if (state.questOpponentTimer) clearTimeout(state.questOpponentTimer);
+
+      const opponentText = document.getElementById("quest-opponent-text");
+      if (opponentText) {
+        if (state.questOpponentState === "thinking" || state.questOpponentState === "incorrect") {
+          opponentText.textContent = `Победа! Вы опередили ${state.questOpponent}! 🎉`;
+          opponentText.style.color = "#10b981";
+        } else {
+          opponentText.textContent = `Победа, но ${state.questOpponent} разгадал раньше! ⌛`;
+          opponentText.style.color = "#f59e0b";
+        }
+      }
+
       const xpEarned = 100 - (state.currentQuestSymptomCount - 1) * 25;
       addXP(xpEarned);
 
@@ -2314,14 +2153,14 @@ document.addEventListener("DOMContentLoaded", () => {
   function unlockAchievement(id) {
     let achs = {};
     try {
-      achs = JSON.parse(localStorage.getItem("medstudy_achievements") || "{}");
+      achs = JSON.parse(safeStorage.getItem("medstudy_achievements") || "{}");
     } catch (e) {
       achs = {};
     }
     if (achs[id]) return;
 
     achs[id] = true;
-    localStorage.setItem("medstudy_achievements", JSON.stringify(achs));
+    safeStorage.setItem("medstudy_achievements", JSON.stringify(achs));
 
     // Award bonus XP!
     addXP(100);
@@ -2343,6 +2182,14 @@ document.addEventListener("DOMContentLoaded", () => {
       anatomy_explorer: {
         title: "3D Исследователь 🧍",
         desc: "Вы детально изучили органы в WebGL-атласе трехмерного тела."
+      },
+      chief_laboratory_technician: {
+        title: "Главный лаборант 🧪",
+        desc: "Вы впервые успешно интерпретировали результаты клинического анализа!"
+      },
+      clinical_mathematician: {
+        title: "Клинический математик 🧮",
+        desc: "Вы произвели первый расчет клинических формул дозировки или СКФ!"
       }
     };
 
@@ -2567,6 +2414,598 @@ document.addEventListener("DOMContentLoaded", () => {
     buildMap();
   }
 
+  // --- LAB ANALYZER ENGINE ---
+  function initLabAnalyzer() {
+    const labSkipBtn = document.getElementById("lab-skip-btn");
+    const labNextBtn = document.getElementById("lab-next-btn");
+
+    if (!labSkipBtn || !labNextBtn) return;
+
+    // Reset controls
+    labSkipBtn.onclick = () => { selectRandomLabCase(); };
+    labNextBtn.onclick = () => { selectRandomLabCase(); };
+
+    selectRandomLabCase();
+  }
+
+  function selectRandomLabCase() {
+    if (!MedData.labs || MedData.labs.length === 0) return;
+    
+    let newIndex = state.currentLabIndex;
+    if (MedData.labs.length > 1) {
+      while (newIndex === state.currentLabIndex) {
+        newIndex = Math.floor(Math.random() * MedData.labs.length);
+      }
+    } else {
+      newIndex = 0;
+    }
+    state.currentLabIndex = newIndex;
+    loadLabCase(newIndex);
+  }
+
+  function loadLabCase(index) {
+    const labCase = MedData.labs[index];
+    if (!labCase) return;
+
+    const labSheetTitle = document.getElementById("lab-sheet-title");
+    const labSheetDesc = document.getElementById("lab-sheet-desc");
+    const labTableBody = document.getElementById("lab-table-body");
+    const labOptionsContainer = document.getElementById("lab-options-container");
+    const labFeedbackBox = document.getElementById("lab-feedback-box");
+    const labPathogenesisContainer = document.getElementById("lab-pathogenesis-container");
+    const labPathogenesisContent = document.getElementById("lab-pathogenesis-content");
+    const labSkipBtn = document.getElementById("lab-skip-btn");
+    const labNextBtn = document.getElementById("lab-next-btn");
+
+    // Set texts
+    if (labSheetTitle) labSheetTitle.textContent = labCase.title;
+    if (labSheetDesc) labSheetDesc.textContent = labCase.description;
+
+    // Reset UI visibility
+    if (labFeedbackBox) {
+      labFeedbackBox.classList.add("hidden");
+      labFeedbackBox.innerHTML = "";
+    }
+    if (labPathogenesisContainer) {
+      labPathogenesisContainer.classList.add("hidden");
+    }
+    if (labNextBtn) labNextBtn.classList.add("hidden");
+    if (labSkipBtn) labSkipBtn.classList.remove("hidden");
+
+    // Load table rows
+    if (labTableBody) {
+      labTableBody.innerHTML = "";
+      labCase.parameters.forEach(param => {
+        const tr = document.createElement("tr");
+        
+        let statusBadge = "";
+        if (param.status === "HIGH") {
+          statusBadge = `<span class="status-badge high">ВЫШЕ</span>`;
+        } else if (param.status === "LOW") {
+          statusBadge = `<span class="status-badge low">НИЖЕ</span>`;
+        } else if (param.status === "ABNORMAL") {
+          statusBadge = `<span class="status-badge abnormal">ПАТОЛОГИЯ</span>`;
+        } else {
+          statusBadge = `<span class="status-badge normal">НОРМА</span>`;
+        }
+
+        tr.innerHTML = `
+          <td style="padding: 12px 10px; font-weight: 500;">${param.name}</td>
+          <td style="padding: 12px 10px; text-align: center; font-weight: 700; color: ${param.status !== "NORMAL" ? "var(--accent-pink)" : "var(--text-color)"}">${param.value}</td>
+          <td style="padding: 12px 10px; text-align: center; color: var(--text-muted);">${param.ref}</td>
+          <td style="padding: 12px 10px; text-align: center; color: var(--text-muted);">${param.unit}</td>
+          <td style="padding: 12px 10px; text-align: center;">${statusBadge}</td>
+        `;
+
+        // Row highlighting toggle
+        tr.addEventListener("click", () => {
+          tr.classList.toggle("lab-row-selected");
+        });
+
+        labTableBody.appendChild(tr);
+      });
+    }
+
+    // Load multiple choice options
+    if (labOptionsContainer) {
+      labOptionsContainer.innerHTML = "";
+      
+      const allOptions = [labCase.correctAnswer, ...labCase.distractors];
+      shuffleArray(allOptions);
+
+      allOptions.forEach(optText => {
+        const btn = document.createElement("button");
+        btn.className = "lab-option-btn";
+        btn.textContent = optText;
+
+        btn.addEventListener("click", () => {
+          if (optText === labCase.correctAnswer) {
+            btn.classList.add("correct");
+            
+            document.querySelectorAll(".lab-option-btn").forEach(b => {
+              b.disabled = true;
+            });
+
+            addXP(50);
+            unlockAchievement("chief_laboratory_technician");
+
+            if (labFeedbackBox) {
+              labFeedbackBox.innerHTML = `✅ <strong>Правильно!</strong> Заключение поставлено абсолютно верно. Вы получили +50 XP.`;
+              labFeedbackBox.className = "lab-feedback";
+              labFeedbackBox.style.background = "rgba(16, 185, 129, 0.1)";
+              labFeedbackBox.style.borderColor = "rgba(16, 185, 129, 0.2)";
+              labFeedbackBox.style.color = "#a7f3d0";
+              labFeedbackBox.classList.remove("hidden");
+            }
+
+            if (labPathogenesisContainer && labPathogenesisContent) {
+              labPathogenesisContent.innerHTML = labCase.pathogenesis;
+              labPathogenesisContainer.classList.remove("hidden");
+              if (window.MathJax) {
+                MathJax.typesetPromise();
+              }
+            }
+
+            if (labNextBtn) labNextBtn.classList.remove("hidden");
+            if (labSkipBtn) labSkipBtn.classList.add("hidden");
+
+          } else {
+            btn.classList.add("incorrect");
+            btn.disabled = true;
+
+            const widgetEl = document.querySelector(".lab-widget");
+            if (widgetEl) {
+              widgetEl.style.animation = "shake 0.4s ease";
+              setTimeout(() => {
+                widgetEl.style.animation = "";
+              }, 400);
+            }
+
+            if (labFeedbackBox) {
+              labFeedbackBox.innerHTML = `❌ <strong>Ошибка!</strong> Синдром не соответствует бланку. Обратите внимание на показатели с отклонениями и попробуйте еще раз.`;
+              labFeedbackBox.className = "lab-feedback";
+              labFeedbackBox.style.background = "rgba(239, 68, 68, 0.1)";
+              labFeedbackBox.style.borderColor = "rgba(239, 68, 68, 0.2)";
+              labFeedbackBox.style.color = "#fca5a5";
+              labFeedbackBox.classList.remove("hidden");
+            }
+          }
+        });
+
+        labOptionsContainer.appendChild(btn);
+      });
+    }
+  }
+
+  // --- TEXTBOOK READER MODULE ---
+  let readerState = {
+    activeSubjectId: "anatomy",
+    activeChapterIndex: 0,
+    activeLang: "ru",
+    fontSize: 15
+  };
+
+  const subjectBookMap = {
+    anatomy: { ru: "sapin_anatomy", en: "grays_anatomy" },
+    histology: { ru: "afanasiev_histology", en: "junqueira_histology" },
+    physiology: { ru: "sudakov_physiology", en: "guyton_physiology" },
+    biochemistry: { ru: "severin_biochemistry", en: "lippincott_biochemistry" },
+    pathophysiology: { ru: "novitsky_pathophysiology", en: "mcphee_pathophysiology" },
+    pathology: { ru: "strukov_pathology", en: "robbins_pathology" },
+    pharmacology: { ru: "kharkevich_pharmacology", en: "rang_dale_pharmacology" }
+  };
+
+  function openBookReader(subjectId) {
+    const modal = document.getElementById("book-reader-modal");
+    if (!modal) return;
+
+    readerState.activeSubjectId = subjectId;
+    readerState.activeChapterIndex = 0;
+    readerState.activeLang = "ru";
+
+    document.getElementById("btn-lang-ru").classList.add("active");
+    document.getElementById("btn-lang-en").classList.remove("active");
+    
+    const contentPane = document.getElementById("book-content-pane");
+    if (contentPane) {
+      contentPane.className = "book-content-area reader-theme-night";
+    }
+    document.querySelectorAll(".theme-dot").forEach(d => {
+      if (d.getAttribute("data-theme") === "night") {
+        d.classList.add("active");
+        d.style.border = "2px solid var(--accent-cyan)";
+      } else {
+        d.classList.remove("active");
+        d.style.border = "";
+      }
+    });
+
+    const searchInput = document.getElementById("reader-search-input");
+    if (searchInput) searchInput.value = "";
+    document.getElementById("reader-search-clear").style.display = "none";
+    document.getElementById("reader-search-results-count").textContent = "";
+
+    modal.classList.remove("hidden");
+
+    loadBookTOC();
+    loadBookChapter(0);
+
+    document.getElementById("book-reader-close").onclick = () => {
+      modal.classList.add("hidden");
+    };
+
+    document.getElementById("btn-lang-ru").onclick = () => {
+      switchReaderLang("ru");
+    };
+    document.getElementById("btn-lang-en").onclick = () => {
+      switchReaderLang("en");
+    };
+
+    document.getElementById("btn-font-inc").onclick = () => {
+      adjustReaderFont(1);
+    };
+    document.getElementById("btn-font-dec").onclick = () => {
+      adjustReaderFont(-1);
+    };
+
+    document.querySelectorAll(".theme-dot").forEach(dot => {
+      dot.onclick = () => {
+        const theme = dot.getAttribute("data-theme");
+        document.querySelectorAll(".theme-dot").forEach(d => {
+          d.classList.remove("active");
+          d.style.border = "";
+        });
+        dot.classList.add("active");
+        dot.style.border = "2px solid var(--accent-cyan)";
+        contentPane.className = `book-content-area reader-theme-${theme}`;
+      };
+    });
+
+    if (searchInput) {
+      searchInput.oninput = () => {
+        const q = searchInput.value.trim();
+        if (q.length > 0) {
+          document.getElementById("reader-search-clear").style.display = "block";
+          highlightTextInChapter(q);
+        } else {
+          document.getElementById("reader-search-clear").style.display = "none";
+          document.getElementById("reader-search-results-count").textContent = "";
+          loadBookChapter(readerState.activeChapterIndex);
+        }
+      };
+      document.getElementById("reader-search-clear").onclick = () => {
+        searchInput.value = "";
+        document.getElementById("reader-search-clear").style.display = "none";
+        document.getElementById("reader-search-results-count").textContent = "";
+        loadBookChapter(readerState.activeChapterIndex);
+      };
+    }
+  }
+
+  function switchReaderLang(lang) {
+    if (readerState.activeLang === lang) return;
+    readerState.activeLang = lang;
+
+    document.getElementById("btn-lang-ru").classList.toggle("active", lang === "ru");
+    document.getElementById("btn-lang-en").classList.toggle("active", lang === "en");
+
+    loadBookTOC();
+    loadBookChapter(readerState.activeChapterIndex);
+  }
+
+  function loadBookTOC() {
+    const tocList = document.getElementById("book-toc-list");
+    if (!tocList) return;
+    tocList.innerHTML = "";
+
+    const bookKey = subjectBookMap[readerState.activeSubjectId][readerState.activeLang];
+    const book = MedData.textbooks[bookKey];
+    if (!book) return;
+
+    document.getElementById("reader-book-title").textContent = book.title;
+    document.getElementById("reader-book-author").textContent = "Автор: " + book.author;
+
+    book.chapters.forEach((chap, idx) => {
+      const li = document.createElement("li");
+      li.className = `book-toc-item ${idx === readerState.activeChapterIndex ? 'active' : ''}`;
+      li.textContent = chap.title.split(":")[0];
+      li.title = chap.title;
+      li.onclick = () => {
+        document.querySelectorAll(".book-toc-item").forEach(item => item.classList.remove("active"));
+        li.classList.add("active");
+        readerState.activeChapterIndex = idx;
+        loadBookChapter(idx);
+      };
+      tocList.appendChild(li);
+    });
+  }
+
+  function loadBookChapter(chapterIdx) {
+    const textBody = document.getElementById("book-text-body");
+    if (!textBody) return;
+
+    const bookKey = subjectBookMap[readerState.activeSubjectId][readerState.activeLang];
+    const book = MedData.textbooks[bookKey];
+    if (!book) return;
+
+    const chapter = book.chapters[chapterIdx];
+    if (!chapter) return;
+
+    textBody.innerHTML = `<h3 style="margin-top:0; font-size:1.4rem; color:#fff; border-bottom:1px solid rgba(255,255,255,0.08); padding-bottom:10px; margin-bottom:20px;">${chapter.title}</h3>` + chapter.content;
+    textBody.style.fontSize = `${readerState.fontSize}px`;
+
+    applyWikiLinks(textBody);
+
+    if (window.MathJax) {
+      MathJax.typesetPromise();
+    }
+  }
+
+  function adjustReaderFont(amount) {
+    readerState.fontSize = Math.max(12, Math.min(24, readerState.fontSize + amount));
+    const textBody = document.getElementById("book-text-body");
+    if (textBody) {
+      textBody.style.fontSize = `${readerState.fontSize}px`;
+    }
+  }
+
+  function highlightTextInChapter(query) {
+    const textBody = document.getElementById("book-text-body");
+    if (!textBody) return;
+
+    const bookKey = subjectBookMap[readerState.activeSubjectId][readerState.activeLang];
+    const book = MedData.textbooks[bookKey];
+    const chapter = book.chapters[readerState.activeChapterIndex];
+    textBody.innerHTML = `<h3 style="margin-top:0; font-size:1.4rem; color:#fff; border-bottom:1px solid rgba(255,255,255,0.08); padding-bottom:10px; margin-bottom:20px;">${chapter.title}</h3>` + chapter.content;
+
+    applyWikiLinks(textBody);
+
+    const regex = new RegExp(`(${query})`, "gi");
+    let matchCount = 0;
+
+    function walkAndHighlight(node) {
+      if (node.nodeType === 3) {
+        const val = node.nodeValue;
+        if (regex.test(val)) {
+          const matches = val.match(regex);
+          matchCount += matches ? matches.length : 0;
+          
+          const temp = document.createElement("div");
+          temp.innerHTML = val.replace(regex, `<span class="search-highlight">$1</span>`);
+          
+          while (temp.firstChild) {
+            node.parentNode.insertBefore(temp.firstChild, node);
+          }
+          node.parentNode.removeChild(node);
+        }
+      } else if (node.nodeType === 1 && node.nodeName !== "SCRIPT" && node.nodeName !== "STYLE" && !node.classList.contains("search-highlight")) {
+        for (let i = node.childNodes.length - 1; i >= 0; i--) {
+          walkAndHighlight(node.childNodes[i]);
+        }
+      }
+    }
+
+    walkAndHighlight(textBody);
+    
+    const resultsCountEl = document.getElementById("reader-search-results-count");
+    if (resultsCountEl) {
+      resultsCountEl.textContent = matchCount > 0 ? `Найдено: ${matchCount}` : "Не найдено";
+    }
+
+    if (window.MathJax) {
+      MathJax.typesetPromise();
+    }
+  }
+
+  // --- CLINICAL CALCULATOR ENGINE ---
+  function initClinicalCalculator() {
+    const calcTypeSelect = document.getElementById("calc-type-select");
+    const calcAge = document.getElementById("calc-age");
+    const calcWeight = document.getElementById("calc-weight");
+    const calcHeight = document.getElementById("calc-height");
+    const calcCreatinine = document.getElementById("calc-creatinine");
+    const calcTargetDose = document.getElementById("calc-target-dose");
+
+    if (!calcTypeSelect) return;
+
+    const sliders = [calcAge, calcWeight, calcHeight, calcCreatinine, calcTargetDose];
+    sliders.forEach(slider => {
+      if (slider) {
+        slider.oninput = () => {
+          updateSliderLabels();
+          recalculateClinicalFormula();
+        };
+      }
+    });
+
+    document.getElementsByName("calc-gender").forEach(radio => {
+      radio.onchange = () => {
+        const text = radio.value === "male" ? "Мужской" : "Женский";
+        document.getElementById("val-gender-text").textContent = text;
+        recalculateClinicalFormula();
+      };
+    });
+
+    calcTypeSelect.onchange = () => {
+      const type = calcTypeSelect.value;
+      const heightGroup = document.getElementById("calc-height-group");
+      const creatinineGroup = document.getElementById("calc-creatinine-group");
+      const doseGroup = document.getElementById("calc-dose-group");
+
+      if (type === "ckd-epi" || type === "cockcroft") {
+        if (heightGroup) heightGroup.style.display = type === "cockcroft" ? "block" : "none";
+        if (creatinineGroup) creatinineGroup.style.display = "block";
+        if (doseGroup) doseGroup.style.display = "none";
+      } else if (type === "bsa") {
+        if (heightGroup) heightGroup.style.display = "block";
+        if (creatinineGroup) creatinineGroup.style.display = "none";
+        if (doseGroup) doseGroup.style.display = "block";
+      } else if (type === "bmi") {
+        if (heightGroup) heightGroup.style.display = "block";
+        if (creatinineGroup) creatinineGroup.style.display = "none";
+        if (doseGroup) doseGroup.style.display = "none";
+      }
+
+      recalculateClinicalFormula();
+    };
+
+    updateSliderLabels();
+    recalculateClinicalFormula();
+  }
+
+  function updateSliderLabels() {
+    const calcAge = document.getElementById("calc-age");
+    const calcWeight = document.getElementById("calc-weight");
+    const calcHeight = document.getElementById("calc-height");
+    const calcCreatinine = document.getElementById("calc-creatinine");
+    const calcTargetDose = document.getElementById("calc-target-dose");
+
+    if (calcAge) document.getElementById("val-age").textContent = calcAge.value;
+    if (calcWeight) document.getElementById("val-weight").textContent = calcWeight.value;
+    if (calcHeight) document.getElementById("val-height").textContent = calcHeight.value;
+    if (calcCreatinine) document.getElementById("val-creatinine").textContent = calcCreatinine.value;
+    if (calcTargetDose) document.getElementById("val-target-dose").textContent = calcTargetDose.value;
+  }
+
+  function recalculateClinicalFormula() {
+    const calcTypeSelect = document.getElementById("calc-type-select");
+    if (!calcTypeSelect) return;
+    const type = calcTypeSelect.value;
+
+    const age = parseInt(document.getElementById("calc-age").value);
+    const weight = parseInt(document.getElementById("calc-weight").value);
+    const height = parseInt(document.getElementById("calc-height").value);
+    const creatinine = parseInt(document.getElementById("calc-creatinine").value);
+    const targetDose = parseInt(document.getElementById("calc-target-dose").value);
+    
+    let gender = "male";
+    document.getElementsByName("calc-gender").forEach(r => {
+      if (r.checked) gender = r.value;
+    });
+
+    const outputVal = document.getElementById("calc-output-val");
+    const outputUnit = document.getElementById("calc-output-unit");
+    const interpretationText = document.getElementById("calc-interpretation-text");
+    const recommendationsText = document.getElementById("calc-recommendations-text");
+
+    if (!outputVal) return;
+
+    unlockAchievement("clinical_mathematician");
+
+    if (type === "ckd-epi") {
+      const crMg = creatinine / 88.4;
+      const k = (gender === "female") ? 0.7 : 0.9;
+      const alpha = (gender === "female") ? -0.241 : -0.302;
+      const genderMult = (gender === "female") ? 1.012 : 1.0;
+      
+      let val = 142 * Math.pow(Math.min(crMg / k, 1), alpha) * Math.pow(Math.max(crMg / k, 1), -1.200) * Math.pow(0.9938, age) * genderMult;
+      val = Math.round(val);
+
+      outputVal.textContent = val;
+      outputUnit.textContent = "мл/мин/1.73м²";
+
+      let stage = "";
+      let desc = "";
+      let recs = "";
+
+      if (val >= 90) {
+        stage = "G1 (Норма или высокая СКФ)";
+        desc = "Функция почек не нарушена. Физиологический почечный кровоток полностью сбалансирован.";
+        recs = "Регулярный контроль АД, диета с умеренным потреблением натрия. Ограничений по лекарствам нет.";
+      } else if (val >= 60) {
+        stage = "G2 (Незначительно сниженная СКФ)";
+        desc = "Начальные проявления хронической болезни почек (ХБП) при наличии других маркеров повреждения.";
+        recs = "Контроль суточной протеинурии, оптимизация контроля гликемии у больных СД и уровня АД.";
+      } else if (val >= 45) {
+        stage = "G3a (Умеренно сниженная СКФ)";
+        desc = "ХБП 3 стадии (умеренная почечная дисфункция). Риск накопления гидрофильных препаратов.";
+        recs = "Внимание: требуется коррекция дозировок выводимых почками лекарств (например, метформина, НПВС). Избегайте КТ-ангиографии с контрастом.";
+      } else if (val >= 30) {
+        stage = "G3b (Существенно сниженная СКФ)";
+        desc = "Выраженная почечная недостаточность. Почки с трудом фильтруют метаболиты азота.";
+        recs = "Строгий запрет на НПВС! Рекомендуется консультация нефролога. Коррекция доз антибиотиков и антикоагулянтов по СКФ.";
+      } else if (val >= 15) {
+        stage = "G4 (Тяжело сниженная СКФ)";
+        desc = "Претерминальная почечная недостаточность. Высокий риск гиперкалиемии и ацидоза.";
+        recs = "Подготовка к заместительной почечной терапии. Контроль калия и фосфора сыворотки крови. Исключить калийсберегающие диуретики.";
+      } else {
+        stage = "G5 (Терминальная почечная недостаточность)";
+        desc = "Уремия. Отказ фильтрационной функции почек. Жизнеугрожающие задержки азота и калия.";
+        recs = "Показан экстренный гемодиализ, перитонеальный диализ или трансплантация почки.";
+      }
+
+      interpretationText.innerHTML = `<span style="font-weight:bold; color:var(--accent-pink);">${stage}</span><br>${desc}`;
+      recommendationsText.textContent = recs;
+
+    } else if (type === "cockcroft") {
+      let val = ((140 - age) * weight) / (72 * (creatinine / 88.4));
+      if (gender === "female") val *= 0.85;
+      val = Math.round(val * 10) / 10;
+
+      outputVal.textContent = val;
+      outputUnit.textContent = "мл/мин (Клиренс)";
+
+      let interpret = "";
+      let recs = "";
+      if (val >= 90) {
+        interpret = "Нормальный клиренс креатинина. Выведение метаболитов в пределах нормы.";
+        recs = "Дозы лекарственных средств рассчитываются по стандартным протоколам.";
+      } else if (val >= 60) {
+        interpret = "Легкое снижение клиренса. Фильтрационный резерв почек слегка снижен.";
+        recs = "С осторожностью назначать полные терапевтические дозы высокотоксичных препаратов.";
+      } else if (val >= 30) {
+        interpret = "Умеренное снижение клиренса. Скорость клубочковой экскреции снижена вдвое.";
+        recs = "Внимание: скорректируйте дозу аминогликозидов, дигоксина и низкомолекулярных гепаринов!";
+      } else {
+        interpret = "Тяжелая почечная недостаточность по формуле Кокрофта-Голта.";
+        recs = "Критический риск кумуляции лекарств. Рекомендуется отмена нефротоксичных средств.";
+      }
+
+      interpretationText.innerHTML = interpret;
+      recommendationsText.textContent = recs;
+
+    } else if (type === "bsa") {
+      const bsa = Math.sqrt((weight * height) / 3600);
+      const bsaRounded = Math.round(bsa * 100) / 100;
+      const totalDose = Math.round(bsa * targetDose);
+
+      outputVal.textContent = `${totalDose} мг`;
+      outputUnit.textContent = `Общая доза (при BSA = ${bsaRounded} м²)`;
+
+      interpretationText.innerHTML = `Площадь поверхности тела пациента составляет <strong style="color:var(--accent-cyan);">${bsaRounded} м²</strong>. <br>Расчетная доза препарата: <strong>${totalDose} мг</strong> (исходя из тарифа ${targetDose} мг/м²).`;
+      recommendationsText.textContent = "Данный метод расчета является стандартом дозирования химиотерапевтических средств (онкология) и ряда педиатрических доз для минимизации токсического овердоза.";
+
+    } else if (type === "bmi") {
+      const heightM = height / 100;
+      const bmi = weight / (heightM * heightM);
+      const bmiRounded = Math.round(bmi * 10) / 10;
+
+      const waterDeficit = Math.round(weight * 0.04 * 10) / 10;
+
+      outputVal.textContent = bmiRounded;
+      outputUnit.textContent = "Индекс массы тела (ИМТ)";
+
+      let status = "";
+      let color = "var(--accent-cyan)";
+      if (bmiRounded < 18.5) {
+        status = "Дефицит массы тела (дистрофия)";
+        color = "var(--accent-pink)";
+      } else if (bmiRounded < 25) {
+        status = "Нормальная масса тела (эутрофия)";
+        color = "#a7f3d0";
+      } else if (bmiRounded < 30) {
+        status = "Избыточная масса тела (предожирение)";
+        color = "#fcd34d";
+      } else {
+        status = "Ожирение!";
+        color = "var(--accent-pink)";
+      }
+
+      interpretationText.innerHTML = `<span style="font-weight:bold; color:${color};">${status}</span>.<br>Оценочный дефицит свободной воды при умеренном обезвоживании: <strong style="color:var(--accent-cyan);">${waterDeficit} л</strong>.`;
+      recommendationsText.textContent = `При ИМТ = ${bmiRounded} риски метаболических и сердечно-сосудических осложнений оцениваются как ${bmiRounded >= 30 ? "повышенные" : "низкие"}. Регидратацию проводить изотоническими растворами под контролем диуреза.`;
+    }
+  }
+
   // --- UTILS ---
   function shuffleArray(array) {
     for (let i = array.length - 1; i > 0; i--) {
@@ -2574,6 +3013,1144 @@ document.addEventListener("DOMContentLoaded", () => {
       [array[i], array[j]] = [array[j], array[i]];
     }
     return array;
+  }
+
+  // --- USER PROFILE & ACCOUNT CREATION ---
+  state.userProfile = {
+    username: "Doctor_House",
+    specialty: "СГМУ, Лечебное дело",
+    avatar: "🧑‍⚕️",
+    motto: "Вся жизнь - борьба за гомеостаз!",
+    level: 1,
+    xp: 0,
+    casesSolved: 0,
+    quizzesSolved: 0,
+    duelsWon: 0,
+    forumPosts: 0
+  };
+
+  window.loadUserProfile = async function() {
+    const token = safeStorage.getItem("medstudy_jwt_token");
+    if (token) {
+      try {
+        const res = await fetch("http://localhost:5000/api/auth/me", {
+          headers: { "Authorization": `Bearer ${token}` }
+        });
+        const data = await res.json();
+        if (data.user) {
+          state.userProfile = data.user;
+          state.level = data.user.level || 1;
+          state.xp = data.user.xp || 0;
+          initSocket();
+        }
+      } catch (err) {
+        console.warn("Бэкенд недоступен, загружаем локальный профиль.");
+        const stored = safeStorage.getItem("medstudy_user_profile");
+        if (stored) state.userProfile = JSON.parse(stored);
+      }
+    } else {
+      const modal = document.getElementById("account-creation-modal");
+      if (modal) {
+        modal.classList.remove("hidden");
+      }
+    }
+    syncSocialStats();
+    renderProfileView();
+  };
+
+  async function saveUserProfile() {
+    state.userProfile.level = state.level;
+    state.userProfile.xp = state.xp;
+    safeStorage.setItem("medstudy_user_profile", JSON.stringify(state.userProfile));
+
+    const token = safeStorage.getItem("medstudy_jwt_token");
+    if (token) {
+      try {
+        await fetch("http://localhost:5000/api/auth/update", {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            "Authorization": `Bearer ${token}`
+          },
+          body: JSON.stringify({
+            xp: state.xp,
+            level: state.level,
+            studiedCardsCount: state.studiedCardsCount,
+            solvedCasesCount: state.solvedCasesCount,
+            completedTopicsCount: state.completedTopics ? state.completedTopics.length : 0
+          })
+        });
+      } catch (err) {
+        console.warn("Ошибка синхронизации профиля с сервером:", err);
+      }
+    }
+  }
+
+  function syncSocialStats() {
+    state.userProfile.casesSolved = state.completedTopics ? state.completedTopics.filter(t => t.startsWith("case_")).length : 0;
+    state.userProfile.quizzesSolved = state.completedTopics ? state.completedTopics.filter(t => t.startsWith("quiz_")).length : 0;
+    
+    const storedWon = safeStorage.getItem("medstudy_duels_won") || "0";
+    state.userProfile.duelsWon = parseInt(storedWon);
+    
+    const storedPosts = safeStorage.getItem("medstudy_forum_posts_count") || "0";
+    state.userProfile.forumPosts = parseInt(storedPosts);
+    
+    saveUserProfile();
+  }
+
+  // Account Creation Form handlers
+  const accForm = document.getElementById("account-creation-form");
+  if (accForm) {
+    accForm.onsubmit = async (e) => {
+      e.preventDefault();
+      const usernameInput = document.getElementById("acc-username");
+      const specialtyInput = document.getElementById("acc-specialty");
+      const mottoInput = document.getElementById("acc-motto");
+      
+      const selectedAvatarBtn = document.querySelector("#avatar-selector .avatar-opt.active");
+      const avatarEmoji = selectedAvatarBtn ? selectedAvatarBtn.textContent : "🧑‍⚕️";
+      
+      const username = usernameInput.value || "Студент";
+      const specialty = specialtyInput.value || "Лечебное дело";
+      const motto = mottoInput.value || "Учеба и только учеба!";
+      
+      state.userProfile.username = username;
+      state.userProfile.specialty = specialty;
+      state.userProfile.motto = motto;
+      state.userProfile.avatar = avatarEmoji;
+      state.userProfile.level = 1;
+      state.userProfile.xp = 0;
+
+      // Save locally first so the UI responds instantly
+      saveUserProfile();
+      
+      const modal = document.getElementById("account-creation-modal");
+      if (modal) modal.classList.add("hidden");
+      
+      updateProfileUI();
+      renderProfileView();
+      
+      unlockAchievement("account_created");
+      showToast("🎉 Аккаунт успешно создан! Добро пожаловать.");
+
+      // Call Backend auth in the background
+      fetch("http://localhost:5000/api/auth/register", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          username,
+          email: `${username.toLowerCase().replace(/\s+/g, "_")}@medstudy.hub`,
+          password: `${username}123`,
+          specialty,
+          avatar: avatarEmoji
+        })
+      })
+      .then(res => res.json())
+      .then(data => {
+        if (data.token) {
+          safeStorage.setItem("medstudy_jwt_token", data.token);
+          state.userProfile = data.user;
+          initSocket();
+          saveUserProfile();
+          renderProfileView();
+        }
+      })
+      .catch(err => {
+        console.warn("Бэкенд недоступен, работаем в локальном режиме.");
+      });
+    };
+  }
+
+  // Avatar choice handler
+  document.querySelectorAll("#avatar-selector .avatar-opt").forEach(btn => {
+    btn.onclick = () => {
+      document.querySelectorAll("#avatar-selector .avatar-opt").forEach(b => b.classList.remove("active"));
+      btn.classList.add("active");
+    };
+  });
+
+  // Edit Profile button
+  const editProfileBtn = document.getElementById("btn-edit-profile");
+  if (editProfileBtn) {
+    editProfileBtn.onclick = () => {
+      const newMotto = prompt("Введите новый девиз/статус профиля:", state.userProfile.motto);
+      if (newMotto !== null) {
+        state.userProfile.motto = newMotto;
+        saveUserProfile();
+        renderProfileView();
+        showToast("Статус профиля обновлен!");
+      }
+    };
+  }
+
+  function renderProfileView() {
+    const avatarEmoji = document.getElementById("prof-avatar-emoji");
+    const username = document.getElementById("prof-username");
+    const specialty = document.getElementById("prof-specialty");
+    const motto = document.getElementById("prof-motto");
+    const levelNum = document.getElementById("prof-level-num");
+    const levelTitle = document.getElementById("prof-level-title");
+    
+    if (avatarEmoji) avatarEmoji.textContent = state.userProfile.avatar;
+    if (username) username.textContent = state.userProfile.username;
+    if (specialty) specialty.textContent = state.userProfile.specialty;
+    if (motto) motto.textContent = state.userProfile.motto;
+    if (levelNum) levelNum.textContent = state.level;
+    
+    const totalXp = state.xp + (state.level - 1) * 500;
+    let activeRank = RANKS[0].title;
+    for (let i = RANKS.length - 1; i >= 0; i--) {
+      if (totalXp >= RANKS[i].threshold) {
+        activeRank = RANKS[i].title;
+        break;
+      }
+    }
+    if (levelTitle) levelTitle.textContent = activeRank;
+
+    const casesCount = document.getElementById("stat-cases-count");
+    const quizzesCount = document.getElementById("stat-quizzes-count");
+    const duelsCount = document.getElementById("stat-duels-count");
+    const forumCount = document.getElementById("stat-forum-count");
+
+    if (casesCount) casesCount.textContent = state.userProfile.casesSolved;
+    if (quizzesCount) quizzesCount.textContent = state.userProfile.quizzesSolved;
+    if (duelsCount) duelsCount.textContent = state.userProfile.duelsWon;
+    if (forumCount) forumCount.textContent = state.userProfile.forumPosts;
+
+    renderAchievementsList();
+  }
+
+  function renderAchievementsList() {
+    const listContainer = document.getElementById("profile-achievements-list");
+    if (!listContainer) return;
+    
+    listContainer.innerHTML = "";
+    
+    const allAchievements = [
+      { id: "account_created", title: "Первый шаг", desc: "Успешная регистрация в MedStudy Hub", icon: "🩺" },
+      { id: "anatomy_explorer", title: "Исследователь органов", desc: "Просмотрено описание любого органа в Справочнике", icon: "🧠" },
+      { id: "diagnostician_junior", title: "Начинающий терапевт", desc: "Решен 1 клинический случай", icon: "📝" },
+      { id: "diagnostician_senior", title: "Светило медицины", desc: "Решено 5 клинических случаев", icon: "🎓" },
+      { id: "cardiac_expert", title: "Ритмолог", desc: "Идеально расшифрован случай инфаркта миокарда", icon: "🫀" },
+      { id: "clinical_mathematician", title: "Клинический математик", desc: "Произведен расчет параметров в калькуляторе", icon: "📊" },
+      { id: "duel_victor", title: "Триумфатор дуэлей", desc: "Выиграна карточная дуэль у друга с сухим счетом", icon: "⚔️" },
+      { id: "forum_contributor", title: "Научный корреспондент", desc: "Опубликован вопрос на врачебном консилиуме", icon: "💬" }
+    ];
+
+    allAchievements.forEach(ach => {
+      const isUnlocked = state.achievements && state.achievements.includes(ach.id);
+      
+      const card = document.createElement("div");
+      card.className = `profile-ach-card ${isUnlocked ? '' : 'locked'}`;
+      card.style.cssText = `padding: 15px; border-radius: 8px; background: rgba(255, 255, 255, 0.02); border: 1px solid rgba(255, 255, 255, 0.05); display: flex; gap: 12px; align-items: center;`;
+      
+      card.innerHTML = `
+        <div style="font-size: 26px; filter: ${isUnlocked ? 'none' : 'grayscale(1)'};">${ach.icon}</div>
+        <div>
+          <h4 style="margin: 0; font-size: 13.5px; color: ${isUnlocked ? '#fff' : 'var(--text-muted)'}; font-weight: bold;">${ach.title}</h4>
+          <p style="margin: 3px 0 0 0; font-size: 11px; color: var(--text-muted); line-height: 1.3;">${ach.desc}</p>
+        </div>
+      `;
+      
+      listContainer.appendChild(card);
+    });
+  }
+
+  // --- CHATS & FRIENDS DATABASE ---
+  const friendsList = [
+    { id: "neuro_mary", name: "Мария_Нейро", avatar: "🧠", specialty: "МГМУ, Неврология", motto: "Все мысли - синаптические потенциалы.", status: "studying", statusText: "Учит физиологию мозга", chatHistory: [
+      { sender: "received", text: "Привет! Слышала про новый Справочник органов? Тут просто невероятно расписана биохимия мозга. Как у тебя успехи с учебой?", time: "10:14" }
+    ] },
+    { id: "cardio_ivan", name: "Иван_Кардио", avatar: "🫀", specialty: "СГМУ, Кардиохирургия", motto: "Сердце бьется - жизнь продолжается.", status: "online", statusText: "В сети", chatHistory: [
+      { sender: "received", text: "Привет, коллега! Нужен совет по калькулятору СКФ или дозировкам. Напиши, если решишь посчитать что-то.", time: "Вчера" }
+    ] },
+    { id: "pathphys_dmitry", name: "Дмитрий_ПатФиз", avatar: "🔬", specialty: "РНИМУ, Патанатомия", motto: "Смерть - это лишь крайняя форма патологии.", status: "online", statusText: "В сети", chatHistory: [
+      { sender: "received", text: "Здорово. Проводил патологоанатомический анализ кейса по тромбоэмболии легочной артерии. Хочешь устроить дуэль на флеш-картах?", time: "Вчера" }
+    ] },
+    { id: "sklif_anya", name: "Аня_Склиф", avatar: "🩺", specialty: "СПбГМУ, Реанимация", motto: "Жизнь прекрасна, особенно на ИВЛ.", status: "studying", statusText: "Изучает ЭКГ", chatHistory: [
+      { sender: "received", text: "Привет! Скоро экзамен по фармакологии и реаниматологии, давай решать тесты вместе в кооперативе? Будем подсказывать друг другу в чате!", time: "2 часа назад" }
+    ] },
+    { id: "pharma_kirill", name: "Кирилл_Фарма", avatar: "💊", specialty: "ПГМУ, Фармакология", motto: "Все есть яд, и ничто не лишено ядовитости.", status: "offline", statusText: "Не в сети", chatHistory: [
+      { sender: "received", text: "Привет. Завтра сдаю тему фармакокинетики. Не помнишь, как рассчитать объем распределения препарата?", time: "3 дня назад" }
+    ] }
+  ];
+
+  state.activeFriendId = null;
+
+  window.setupSocialSystem = function() {
+    renderFriendsList();
+    renderForumThreads();
+
+    const chatForm = document.getElementById("chat-send-form");
+    if (chatForm) {
+      chatForm.onsubmit = (e) => {
+        e.preventDefault();
+        sendChatMessage();
+      };
+    }
+
+    const btnDuel = document.getElementById("btn-chat-start-duel");
+    if (btnDuel) {
+      btnDuel.onclick = () => {
+        if (state.activeFriendId) {
+          startCardDuel(state.activeFriendId);
+        }
+      };
+    }
+
+    const btnCoop = document.getElementById("btn-chat-start-coop");
+    if (btnCoop) {
+      btnCoop.onclick = () => {
+        if (state.activeFriendId) {
+          startCoopQuiz(state.activeFriendId);
+        }
+      };
+    }
+
+    document.querySelectorAll(".forum-filters button").forEach(btn => {
+      btn.onclick = () => {
+        document.querySelectorAll(".forum-filters button").forEach(b => b.classList.remove("active"));
+        btn.classList.add("active");
+        renderForumThreads(btn.getAttribute("data-cat"));
+      };
+    });
+
+    const createThreadForm = document.getElementById("forum-create-thread-form");
+    if (createThreadForm) {
+      createThreadForm.onsubmit = (e) => {
+        e.preventDefault();
+        submitNewForumThread();
+      };
+    }
+
+    const btnBackList = document.getElementById("btn-forum-back");
+    if (btnBackList) {
+      btnBackList.onclick = () => {
+        document.getElementById("forum-single-thread-pane").classList.add("hidden");
+        document.getElementById("forum-threads-list-pane").classList.remove("hidden");
+        document.getElementById("forum-new-thread-pane").classList.add("hidden");
+      };
+    }
+
+    const btnNewBack = document.getElementById("btn-new-thread-back");
+    if (btnNewBack) {
+      btnNewBack.onclick = () => {
+        document.getElementById("forum-single-thread-pane").classList.add("hidden");
+        document.getElementById("forum-threads-list-pane").classList.remove("hidden");
+        document.getElementById("forum-new-thread-pane").classList.add("hidden");
+      };
+    }
+
+    const btnNewThread = document.getElementById("btn-forum-new-thread");
+    if (btnNewThread) {
+      btnNewThread.onclick = () => {
+        document.getElementById("forum-single-thread-pane").classList.add("hidden");
+        document.getElementById("forum-threads-list-pane").classList.add("hidden");
+        document.getElementById("forum-new-thread-pane").classList.remove("hidden");
+      };
+    }
+
+    const replyForm = document.getElementById("forum-reply-form");
+    if (replyForm) {
+      replyForm.onsubmit = (e) => {
+        e.preventDefault();
+        submitForumReply();
+      };
+    }
+
+    // Share buttons in Calculator
+    const calcShareChat = document.getElementById("btn-calc-share-chat");
+    if (calcShareChat) {
+      calcShareChat.onclick = () => {
+        const val = document.getElementById("calc-output-val").textContent;
+        const unit = document.getElementById("calc-output-unit").textContent;
+        const interp = document.getElementById("calc-interpretation-text").innerText;
+        if (val === "--") {
+          showToast("Сделайте расчет перед отправкой!");
+          return;
+        }
+        
+        const friendId = state.activeFriendId || "sklif_anya";
+        const messageText = `📊 Коллега, я произвел клинический расчет: значение = ${val} ${unit}. Заключение: ${interp}`;
+        
+        const friendObj = friendsList.find(f => f.id === friendId);
+        if (friendObj) {
+          friendObj.chatHistory.push({ sender: "sent", text: messageText, time: getFormattedTime() });
+          showToast(`Расчет отправлен в чат к ${friendObj.name}!`);
+          
+          navigateToView("community");
+          openChatWithFriend(friendId);
+          
+          triggerBotReply(friendId, messageText);
+        }
+      };
+    }
+
+    const calcShareForum = document.getElementById("btn-calc-share-forum");
+    if (calcShareForum) {
+      calcShareForum.onclick = () => {
+        const val = document.getElementById("calc-output-val").textContent;
+        const unit = document.getElementById("calc-output-unit").textContent;
+        const interp = document.getElementById("calc-interpretation-text").innerText;
+        if (val === "--") {
+          showToast("Сделайте расчет перед публикацией!");
+          return;
+        }
+
+        navigateToView("forum");
+        document.getElementById("forum-threads-list-pane").classList.add("hidden");
+        document.getElementById("forum-new-thread-pane").classList.remove("hidden");
+
+        const qTitle = document.getElementById("new-thread-title");
+        const qContent = document.getElementById("new-thread-content");
+        const qCat = document.getElementById("new-thread-category");
+
+        if (qTitle) qTitle.value = `Помогите оценить клинический расчет: ${val} ${unit}`;
+        if (qCat) qCat.value = "cases";
+        if (qContent) qContent.value = `Провел расчет по формуле. Результат: ${val} ${unit}.\nИнтерпретация: ${interp}\nНасколько критичны данные показатели в условиях палаты интенсивной терапии?`;
+      };
+    }
+  };
+
+  function renderFriendsList() {
+    const container = document.getElementById("friends-container");
+    if (!container) return;
+    
+    container.innerHTML = "";
+    friendsList.forEach(friend => {
+      const btn = document.createElement("button");
+      btn.className = `friend-item-btn ${state.activeFriendId === friend.id ? 'active' : ''}`;
+      
+      let statusClass = "friend-status-dot";
+      if (friend.status === "online") statusClass += " online";
+      if (friend.status === "studying") statusClass += " studying";
+
+      btn.innerHTML = `
+        <div style="font-size: 24px;">${friend.avatar}</div>
+        <div style="flex: 1; text-align: left;">
+          <div style="font-size: 13.5px; font-weight: bold; color: #fff; display: flex; align-items: center; justify-content: space-between;">
+            <span>${friend.name}</span>
+            <span class="${statusClass}"></span>
+          </div>
+          <div style="font-size: 11px; color: var(--text-muted); margin-top: 3px;">${friend.statusText}</div>
+        </div>
+      `;
+
+      btn.onclick = () => {
+        openChatWithFriend(friend.id);
+      };
+
+      container.appendChild(btn);
+    });
+  }
+
+  window.openChatWithFriend = function(friendId) {
+    state.activeFriendId = friendId;
+    renderFriendsList();
+
+    document.getElementById("comm-empty-state").classList.add("hidden");
+    document.getElementById("comm-chat-active").classList.remove("hidden");
+    document.getElementById("comm-duel-active").classList.add("hidden");
+    document.getElementById("comm-coop-active").classList.add("hidden");
+
+    const friend = friendsList.find(f => f.id === friendId);
+    if (!friend) return;
+
+    document.getElementById("chat-header-name").textContent = friend.name;
+    document.getElementById("chat-header-avatar").textContent = friend.avatar;
+    
+    const statusLabel = document.getElementById("chat-header-status");
+    statusLabel.textContent = friend.statusText;
+    statusLabel.className = (friend.status === "offline") ? "text-muted" : "accent-cyan";
+
+    renderChatMessages();
+  };
+
+  function renderChatMessages() {
+    const container = document.getElementById("chat-messages-container");
+    if (!container) return;
+    
+    container.innerHTML = "";
+    const friend = friendsList.find(f => f.id === state.activeFriendId);
+    if (!friend) return;
+
+    friend.chatHistory.forEach(msg => {
+      const bubble = document.createElement("div");
+      bubble.className = `chat-bubble ${msg.sender}`;
+      bubble.innerHTML = `
+        <div>${msg.text}</div>
+        <div style="text-align: right; font-size: 9px; opacity: 0.6; margin-top: 4px;">${msg.time}</div>
+      `;
+      container.appendChild(bubble);
+    });
+
+    container.scrollTop = container.scrollHeight;
+  }
+
+  function getFormattedTime() {
+    const now = new Date();
+    const hrs = String(now.getHours()).padStart(2, '0');
+    const mins = String(now.getMinutes()).padStart(2, '0');
+    return `${hrs}:${mins}`;
+  }
+
+  function initSocket() {
+    if (typeof io !== "undefined" && !socket) {
+      socket = io("http://localhost:5000");
+
+      socket.on("receive_message", (msg) => {
+        const friend = friendsList.find(f => f.id === msg.senderId || f.id === msg.receiverId);
+        if (friend) {
+          const exists = friend.chatHistory.some(m => m.text === msg.text && m.time === msg.time);
+          if (!exists) {
+            friend.chatHistory.push({
+              sender: msg.senderId === state.userProfile.username ? "sent" : "received",
+              text: msg.text,
+              time: msg.time
+            });
+            if (state.activeFriendId === friend.id) {
+              renderChatMessages();
+            }
+          }
+        }
+      });
+
+      socket.on("buddy_typing", (data) => {
+        const typingIndicator = document.getElementById("chat-typing-indicator");
+        if (state.activeFriendId === data.buddyId && typingIndicator) {
+          if (data.typing) {
+            document.getElementById("chat-typing-text").textContent = `${data.buddyId === 'neuro_mary' ? 'Мария_Нейро' : 'Дмитрий_ПатФиз'} печатает`;
+            typingIndicator.classList.remove("hidden");
+          } else {
+            typingIndicator.classList.add("hidden");
+          }
+        }
+      });
+    }
+  }
+
+  function sendChatMessage() {
+    const input = document.getElementById("chat-input-text");
+    if (!input || input.value.trim() === "") return;
+
+    const friend = friendsList.find(f => f.id === state.activeFriendId);
+    if (!friend) return;
+
+    const userText = input.value;
+    const formattedTime = getFormattedTime();
+    
+    friend.chatHistory.push({
+      sender: "sent",
+      text: userText,
+      time: formattedTime
+    });
+
+    input.value = "";
+    renderChatMessages();
+
+    if (socket) {
+      socket.emit("send_message", {
+        senderId: state.userProfile.username,
+        receiverId: friend.id,
+        text: userText,
+        time: formattedTime
+      });
+    } else {
+      triggerBotReply(friend.id, userText);
+    }
+  }
+
+  function triggerBotReply(friendId, userText) {
+    const typingIndicator = document.getElementById("chat-typing-indicator");
+    const friend = friendsList.find(f => f.id === friendId);
+    if (!friend) return;
+
+    if (typingIndicator) {
+      document.getElementById("chat-typing-text").textContent = `${friend.name} печатает`;
+      typingIndicator.classList.remove("hidden");
+    }
+
+    const delay = 1500 + Math.random() * 2000;
+    setTimeout(() => {
+      if (typingIndicator) typingIndicator.classList.add("hidden");
+      
+      const response = generateBotResponse(friendId, userText);
+      friend.chatHistory.push({
+        sender: "received",
+        text: response,
+        time: getFormattedTime()
+      });
+
+      if (state.activeFriendId === friendId) {
+        renderChatMessages();
+      }
+    }, delay);
+  }
+
+  function generateBotResponse(friendId, userText) {
+    const text = userText.toLowerCase();
+    
+    if (friendId === "neuro_mary") {
+      if (text.includes("привет")) {
+        return "👋 Привет! Я как раз разбираю рефлекторную дугу. Знал ли ты, что у коленного рефлекса она моносинаптическая? Очень простой и быстрый путь!";
+      }
+      if (text.includes("мозг") || text.includes("синапс")) {
+        return "🧠 Головной мозг содержит около 86 миллиардов нейронов, и каждый образует тысячи синапсов! При обучении синапсы укрепляются благодаря долгосрочной потенциации (LTP) рецепторов AMPA/NMDA.";
+      }
+      if (text.includes("почки") || text.includes("скф")) {
+        return "🧠 Почки и мозг связаны регуляцией давления! Помнишь, что гипоталамус выделяет АДГ (вазопрессин) при повышении осмолярности плазмы, чтобы почки задерживали воду?";
+      }
+      if (text.includes("сердце") || text.includes("экг")) {
+        return "❤️ Сердце регулируется вегетативной системой! Блуждающий нерв (n. vagus, X пара) выделяет ацетилхолин, действующий на M2-холинорецепторы SA-узла, вызывая брадикардию.";
+      }
+      return "🧠 Хм, очень интересный медицинский аспект. А ты знаешь, почему при инсульте в левом полушарии моторные нарушения развиваются именно в правой половине тела? Подсказка: пирамидный перекрест (decussatio pyramidum) в продолговатом мозге!";
+    }
+
+    if (friendId === "cardio_ivan") {
+      if (text.includes("привет")) {
+        return "🫀 Привет! Измеряю пульс перед экзаменом. Надеюсь, мой сердечный выброс в норме. Готов поболтать о гемодинамике!";
+      }
+      if (text.includes("сердце") || text.includes("инфаркт") || text.includes("экг")) {
+        return "🫀 Самое важное при подозрении на ОИМ - снять ЭКГ в течение 10 минут! Элевация сегмента ST (инфаркт STEMI) говорит о трансмуральном повреждении миокарда. Срочно назначаем тромболизис или отправляем на ЧКВ!";
+      }
+      if (text.includes("давление") || text.includes("скф") || text.includes("почки")) {
+        return "🫀 Сердечно-сосудистая система тесно связана с ренин-ангиотензин-альдостероновой системой (РААС). Почки снижают кровоток -> выделяют ренин -> ангиотензин II вызывает мощный вазоспазм и гипертензию!";
+      }
+      return "🫀 Интересно! А ты помнишь, какова нормальная длительность интервала PQ (PR) на ЭКГ? В норме она составляет 0.12 - 0.20 секунд. Удлинение указывает на АВ-блокаду I степени!";
+    }
+
+    if (friendId === "pathphys_dmitry") {
+      if (text.includes("привет")) {
+        return "🔬 Привет! Настраиваю микроскоп, смотрю биопсию миокарда с клетками Аничкова (ревмокардит). Что обсуждаем?";
+      }
+      if (text.includes("диагноз") || text.includes("кейс") || text.includes("клинический")) {
+        return "🔬 Патологическая физиология - ключ к любому диагнозу! Сначала ищи этиопатогенез, потом ведущий патологический синдром, а симптомы - лишь верхушка айсберга.";
+      }
+      if (text.includes("фарма") || text.includes("препарат")) {
+        return "🔬 Вся фармакология борется с патофизиологическими процессами. Например, НПВС блокируют ЦОГ-1 и ЦОГ-2, тем самым снижая синтез простагландинов и подавляя экссудативную фазу воспаления.";
+      }
+      return "🔬 С точки зрения патологии, это интригующе. Кстати, ответь на вопрос: какой тип некроза характерен для головного мозга при ишемическом инсульте? Колликвационный (влажный) или коагуляционный (сухой)?";
+    }
+
+    if (friendId === "sklif_anya") {
+      if (text.includes("привет")) {
+        return "🩺 Привет! Я на дежурстве, пишу истории болезни. Если у тебя есть сложные тесты, кидай сюда, решим вместе!";
+      }
+      if (text.includes("реанимация") || text.includes("газы") || text.includes("анализ")) {
+        return "🩺 В реанимации газы крови (КОС) - Библия! Если pH < 7.35 и pCO2 > 45 мм рт.ст., это классический респираторный ацидоз. Нужно увеличивать минутный объем вентиляции на ИВЛ.";
+      }
+      if (text.includes("почки") || text.includes("моча")) {
+        return "🩺 Острая почечная недостаточность (ОПП) определяется по темпу диуреза (менее 0.5 мл/кг/ч за 6 часов) и росту креатинина сыворотки. Следи за гиперкалиемией - она может остановить сердце!";
+      }
+      return "🩺 Коллега, давай держаться вместе! Нам нужно сдавать колоквиумы. Ты знаешь, каков первый шаг при анафилактическом шоке? Немедленное введение адреналина (эпинефрина) внутримышечно в дозе 0.3-0.5 мг!";
+    }
+
+    if (friendId === "pharma_kirill") {
+      if (text.includes("привет")) {
+        return "💊 Привет! Сортирую рецептурные бланки. Обсудим фармакокинетику или побочные эффекты лекарств?";
+      }
+      if (text.includes("фарма") || text.includes("рецепт") || text.includes("препарат")) {
+        return "💊 Превосходно! Давай вспомним: бета-блокаторы делятся на селективные (метопролол, бисопролол - действуют на B1) и неселективные (пропранолол - блокируют B1 и B2, опасны при бронхиальной астме из-за бронхоспазма!).";
+      }
+      if (text.includes("печень") || text.includes("фермент")) {
+        return "💊 Печень - главный орган биотрансформации! Цитохром P450 (в частности CYP3A4) метаболизирует 50% всех лекарств. Грейпфрутовый сок ингибирует этот фермент, вызывая передозировку препаратов!";
+      }
+      return "💊 Фармакология - наука точная. А ты помнишь разницу между агонистом и антагонистом? Агонист стимулирует рецептор, вызывая биологический ответ, а антагонист лишь блокирует связывание с естественным лигандом.";
+    }
+
+    return "🔬 Медицинский факт: мозг человека потребляет около 20% всей энергии организма, хотя составляет лишь 2% от массы тела. Отличная тема для обсуждения!";
+  }
+
+  // --- CARD DUEL SYSTEM ---
+  window.startCardDuel = function(partnerId) {
+    const friend = friendsList.find(f => f.id === partnerId);
+    if (!friend) return;
+
+    const duelTerms = [
+      { term: "Ацетилхолин", cat: "Фармакология", def: "Основной нейромедиатор парасимпатической нервной системы, действующий на мускариновые и никотиновые рецепторы." },
+      { term: "Нефрон", cat: "Анатомия", def: "Структурно-функциональная единица почки, состоящая из почечного тельца и системы канальцев." },
+      { term: "Фракция выброса", cat: "Кардиология", def: "Показатель насосной функции сердца, отношение ударного объема к конечно-диастолическому объему левого желудочка (норма >50%)." },
+      { term: "Гипоксия", cat: "Патофизиология", def: "Типовой патологический процесс, характеризующийся недостаточным снабжением тканей кислородом или нарушением его усвоения." },
+      { term: "Почечный клиренс", cat: "Нефрология", def: "Объем плазмы крови, полностью очищаемый почками от какого-либо вещества за единицу времени." }
+    ];
+
+    state.duelState = {
+      active: true,
+      partnerId: partnerId,
+      currentCardIndex: 0,
+      scoreUser: 0,
+      scorePartner: 0,
+      cards: duelTerms
+    };
+
+    document.getElementById("comm-chat-active").classList.add("hidden");
+    document.getElementById("comm-duel-active").classList.remove("hidden");
+    document.getElementById("duel-partner-name").textContent = friend.name;
+
+    updateDuelCard();
+  };
+
+  function updateDuelCard() {
+    const ds = state.duelState;
+    if (ds.currentCardIndex >= ds.cards.length) {
+      finishCardDuel();
+      return;
+    }
+
+    const card = ds.cards[ds.currentCardIndex];
+    document.getElementById("duel-score-user").textContent = ds.scoreUser;
+    document.getElementById("duel-score-partner").textContent = ds.scorePartner;
+
+    const termCat = document.getElementById("duel-card-term-category");
+    const term = document.getElementById("duel-card-term");
+    const def = document.getElementById("duel-card-def");
+
+    if (termCat) termCat.textContent = card.cat;
+    if (term) term.textContent = card.term;
+    if (def) {
+      def.textContent = card.def;
+      def.classList.add("hidden");
+    }
+
+    const flipBtn = document.getElementById("btn-duel-flip-card");
+    if (flipBtn) flipBtn.classList.remove("hidden");
+
+    document.getElementById("duel-partner-action-text").textContent = "Ожидание вашего ответа...";
+
+    const failBtn = document.getElementById("btn-duel-fail");
+    const successBtn = document.getElementById("btn-duel-success");
+    if (failBtn) failBtn.disabled = false;
+    if (successBtn) successBtn.disabled = false;
+  }
+
+  const flipBtn = document.getElementById("btn-duel-flip-card");
+  if (flipBtn) {
+    flipBtn.onclick = () => {
+      const def = document.getElementById("duel-card-def");
+      if (def) def.classList.remove("hidden");
+      flipBtn.classList.add("hidden");
+    };
+  }
+
+  const duelFail = document.getElementById("btn-duel-fail");
+  if (duelFail) {
+    duelFail.onclick = () => {
+      handleDuelAnswer(false);
+    };
+  }
+
+  const duelSuccess = document.getElementById("btn-duel-success");
+  if (duelSuccess) {
+    duelSuccess.onclick = () => {
+      handleDuelAnswer(true);
+    };
+  }
+
+  function handleDuelAnswer(userKnows) {
+    const ds = state.duelState;
+    if (!ds.active) return;
+
+    document.getElementById("btn-duel-fail").disabled = true;
+    document.getElementById("btn-duel-success").disabled = true;
+
+    if (userKnows) {
+      ds.scoreUser++;
+      document.getElementById("duel-score-user").textContent = ds.scoreUser;
+    }
+
+    const partner = friendsList.find(f => f.id === ds.partnerId);
+    const partnerName = partner ? partner.name : "Бот";
+
+    const actionText = document.getElementById("duel-partner-action-text");
+    actionText.textContent = `${partnerName} думает...`;
+
+    setTimeout(() => {
+      const partnerKnows = Math.random() < 0.75;
+      if (partnerKnows) {
+        ds.scorePartner++;
+        document.getElementById("duel-score-partner").textContent = ds.scorePartner;
+        actionText.textContent = `${partnerName} ответил правильно! ✅`;
+      } else {
+        actionText.textContent = `${partnerName} ошибся! ❌`;
+      }
+
+      setTimeout(() => {
+        ds.currentCardIndex++;
+        updateDuelCard();
+      }, 1500);
+    }, 1000);
+  }
+
+  function finishCardDuel() {
+    const ds = state.duelState;
+    ds.active = false;
+    
+    const partner = friendsList.find(f => f.id === ds.partnerId);
+    const partnerName = partner ? partner.name : "Друг";
+
+    let resultMsg = "";
+    let xpEarned = 0;
+
+    if (ds.scoreUser > ds.scorePartner) {
+      resultMsg = `🏆 Вы победили в дуэли против ${partnerName} со счетом ${ds.scoreUser}:${ds.scorePartner}!`;
+      xpEarned = 100;
+      
+      const storedWon = parseInt(safeStorage.getItem("medstudy_duels_won") || "0") + 1;
+      safeStorage.setItem("medstudy_duels_won", storedWon);
+      
+      if (ds.scoreUser === 5 && ds.scorePartner === 0) {
+        unlockAchievement("duel_victor");
+      }
+    } else if (ds.scoreUser < ds.scorePartner) {
+      resultMsg = `😞 Вы проиграли дуэль против ${partnerName} со счетом ${ds.scoreUser}:${ds.scorePartner}. Попробуйте еще раз!`;
+      xpEarned = 25;
+    } else {
+      resultMsg = `🤝 Ничья! Счет ${ds.scoreUser}:${ds.scorePartner}. Хорошая работа!`;
+      xpEarned = 50;
+    }
+
+    alert(`${resultMsg}\nВы заработали +${xpEarned} XP!`);
+    addXP(xpEarned);
+    syncSocialStats();
+
+    openChatWithFriend(ds.partnerId);
+  }
+
+  // --- COOPERATIVE QUIZ SYSTEM ---
+  window.startCoopQuiz = function(partnerId) {
+    const friend = friendsList.find(f => f.id === partnerId);
+    if (!friend) return;
+
+    const coopQuestions = [
+      { q: "Какой из перечисленных ферментов лизосом активируется при ацидозе в очаге воспаления?", opts: ["Кислая фосфатаза", "Щелочная фосфатаза", "Амилаза", "Каталаза"], ans: 0, hint: "Помни про приставку - кислая среда соответствует ацидозу!" },
+      { q: "Какое лекарственное вещество блокирует мускариновые холинорецепторы SA-узла?", opts: ["Атропин", "Пропранолол", "Пилокарпин", "Ацетилхолин"], ans: 0, hint: "Атропин - классический М-холиноблокатор, вызывающий тахикардию." },
+      { q: "При каком уровне СКФ диагностируется терминальная хроническая болезнь почек (ХБП 5 стадии)?", opts: ["Менее 15 мл/мин/1.73м²", "Менее 30 мл/мин/1.73м²", "Менее 45 мл/мин/1.73м²", "Менее 60 мл/мин/1.73м²"], ans: 0, hint: "Это крайняя стадия, перед гемодиализом. Точно менее 15!" },
+      { q: "Какой синдром характеризуется повышением pH артериальной крови более 7.45 и накоплением бикарбоната?", opts: ["Метаболический алкалоз", "Респираторный ацидоз", "Метаболический ацидоз", "Респираторный алкалоз"], ans: 0, hint: "pH > 7.45 - это алкалоз. Раз дело в бикарбонате - метаболический." },
+      { q: "Как называется сухой некроз миокарда, возникающий в результате ишемии?", opts: ["Коагуляционный некроз", "Колликвационный некроз", "Гангрена", "Секвестр"], ans: 0, hint: "Для сердца и плотных паренхиматозных органов характерен именно коагуляционный!" }
+    ];
+
+    state.coopState = {
+      active: true,
+      partnerId: partnerId,
+      currentQIndex: 0,
+      scoreUser: 0,
+      scorePartner: 0,
+      questions: coopQuestions
+    };
+
+    document.getElementById("comm-chat-active").classList.add("hidden");
+    document.getElementById("comm-coop-active").classList.remove("hidden");
+    document.getElementById("coop-partner-name").textContent = friend.name;
+    document.getElementById("coop-partner-progress-label").textContent = `${friend.name}:`;
+
+    updateCoopQuestion();
+  };
+
+  function updateCoopQuestion() {
+    const cs = state.coopState;
+    if (cs.currentQIndex >= cs.questions.length) {
+      finishCoopQuiz();
+      return;
+    }
+
+    const qObj = cs.questions[cs.currentQIndex];
+    document.getElementById("coop-q-counter").textContent = `Вопрос ${cs.currentQIndex + 1} из ${cs.questions.length}`;
+    
+    const userPercent = (cs.currentQIndex / cs.questions.length) * 100;
+    const partnerPercent = (cs.currentQIndex / cs.questions.length) * 100;
+    document.getElementById("coop-progress-user").style.width = `${userPercent}%`;
+    document.getElementById("coop-progress-partner").style.width = `${partnerPercent}%`;
+    
+    document.getElementById("coop-score-user").textContent = `${cs.scoreUser}/${cs.currentQIndex}`;
+    document.getElementById("coop-score-partner").textContent = `${cs.scorePartner}/${cs.currentQIndex}`;
+
+    document.getElementById("coop-question-text").textContent = qObj.q;
+
+    const partner = friendsList.find(f => f.id === cs.partnerId);
+    document.getElementById("coop-hint-author").textContent = partner ? partner.name : "Друг";
+    document.getElementById("coop-hint-text").textContent = qObj.hint;
+
+    const optContainer = document.getElementById("coop-options-container");
+    optContainer.innerHTML = "";
+
+    qObj.opts.forEach((opt, idx) => {
+      const btn = document.createElement("button");
+      btn.className = "btn btn-outline w-full";
+      btn.style.cssText = "text-align: left; padding: 10px 15px; font-size: 13px; font-weight: 500;";
+      btn.textContent = opt;
+      btn.onclick = () => {
+        handleCoopAnswer(idx);
+      };
+      optContainer.appendChild(btn);
+    });
+  }
+
+  function handleCoopAnswer(selectedIdx) {
+    const cs = state.coopState;
+    if (!cs.active) return;
+
+    document.querySelectorAll("#coop-options-container button").forEach(btn => {
+      btn.disabled = true;
+    });
+
+    const qObj = cs.questions[cs.currentQIndex];
+    const correctIdx = qObj.ans;
+    
+    const optionButtons = document.querySelectorAll("#coop-options-container button");
+    
+    if (selectedIdx === correctIdx) {
+      cs.scoreUser++;
+      optionButtons[selectedIdx].style.background = "#10b981";
+      optionButtons[selectedIdx].style.borderColor = "#10b981";
+      optionButtons[selectedIdx].style.color = "#fff";
+    } else {
+      optionButtons[selectedIdx].style.background = "#ef4444";
+      optionButtons[selectedIdx].style.borderColor = "#ef4444";
+      optionButtons[selectedIdx].style.color = "#fff";
+      
+      optionButtons[correctIdx].style.background = "#10b981";
+      optionButtons[correctIdx].style.borderColor = "#10b981";
+      optionButtons[correctIdx].style.color = "#fff";
+    }
+
+    document.getElementById("coop-score-user").textContent = `${cs.scoreUser}/${cs.currentQIndex + 1}`;
+
+    setTimeout(() => {
+      const partnerCorrect = Math.random() < 0.8;
+      if (partnerCorrect) {
+        cs.scorePartner++;
+      }
+      document.getElementById("coop-score-partner").textContent = `${cs.scorePartner}/${cs.currentQIndex + 1}`;
+
+      const nextUserPercent = ((cs.currentQIndex + 1) / cs.questions.length) * 100;
+      document.getElementById("coop-progress-user").style.width = `${nextUserPercent}%`;
+      document.getElementById("coop-progress-partner").style.width = `${nextUserPercent}%`;
+
+      setTimeout(() => {
+        cs.currentQIndex++;
+        updateCoopQuestion();
+      }, 2000);
+    }, 800);
+  }
+
+  function finishCoopQuiz() {
+    const cs = state.coopState;
+    cs.active = false;
+    
+    const partner = friendsList.find(f => f.id === cs.partnerId);
+    const partnerName = partner ? partner.name : "Друг";
+
+    const totalXp = (cs.scoreUser + cs.scorePartner) * 15;
+    alert(`🎉 Кооперативный тест завершен!\nВы правильно ответили на ${cs.scoreUser} вопр.\n${partnerName} правильно ответил на ${cs.scorePartner} вопр.\nСовместно заработано +${totalXp} XP!`);
+    
+    addXP(totalXp);
+    syncSocialStats();
+
+    openChatWithFriend(cs.partnerId);
+  }
+
+  // --- MEDICAL FORUM SYSTEM ---
+  const forumThreads = [
+    { id: "thread_1", title: "Механизм действия сердечных гликозидов при ХСН", category: "pharmacology", author: "Кирилл_Фарма", authorAvatar: "💊", content: "Коллеги, давайте обсудим: почему дигоксин блокирует Na+/K+-АТФ-азу, и как это ведет к положительному инотропному эффекту? Хотелось бы детального биохимического разбора.", time: "1 час назад", replies: [
+      { author: "Иван_Кардио", avatar: "🫀", content: "Все просто: ингибирование Na+/K+-АТФ-азы ведет к накоплению натрия внутри кардиомиоцита. Это замедляет работу Na+/Ca2+ обменника. Кальций дольше остается в саркоплазме, связывается с тропонином С, что усиливает сокращение миофибрилл! Но осторожно с гипокалиемией - она усиливает токсичность дигоксина.", time: "50 мин назад" }
+    ] },
+    { id: "thread_2", title: "Редкий клинический случай: Синдром Гийена-Барре после кампилобактериоза", category: "cases", author: "Мария_Нейро", authorAvatar: "🧠", content: "Пациент 34 лет поступил с восходящей мышечной слабостью в нижних конечностях и арефлексией. Две недели назад перенес гастроэнтерит Campylobacter jejuni. Каков оптимальный протокол лечения и патогенез молекулярной мимикрии?", time: "3 часа назад", replies: [
+      { author: "Аня_Склиф", avatar: "🩺", content: "Обязателен плазмаферез или введение внутривенного иммуноглобулина (ВВИГ) в первые 2 недели! ГКС не показали эффективности. В основе лежит перекрестная реактивность антител против ганглиозидов миелина периферических нервов (GM1) с антигенами Campylobacter.", time: "2 часа назад" }
+    ] }
+  ];
+
+  state.activeThreadId = null;
+
+  function renderForumThreads(categoryFilter = "all") {
+    const container = document.getElementById("forum-threads-container");
+    if (!container) return;
+
+    container.innerHTML = "";
+    
+    const filtered = categoryFilter === "all" ? forumThreads : forumThreads.filter(t => t.category === categoryFilter);
+
+    if (filtered.length === 0) {
+      container.innerHTML = "<div style='text-align:center; padding: 20px; color:var(--text-muted);'>Нет тем в этой категории. Создайте свою!</div>";
+      return;
+    }
+
+    filtered.forEach(thread => {
+      const card = document.createElement("div");
+      card.className = "forum-thread-card";
+      
+      const catLabels = { pharmacology: "Фармакология 💊", cases: "Клинический случай 🩺", anatomy: "Анатомия 🧠" };
+      const catColor = { pharmacology: "#fcd34d", cases: "var(--accent-pink)", anatomy: "var(--accent-cyan)" };
+
+      card.innerHTML = `
+        <div style="display: flex; justify-content: space-between; align-items: start; margin-bottom: 8px;">
+          <span class="forum-thread-category-badge" style="background: rgba(255,255,255,0.03); color: ${catColor[thread.category] || '#fff'}; border: 1px solid ${catColor[thread.category] || '#fff'}40;">
+            ${catLabels[thread.category] || "Общее"}
+          </span>
+          <span style="font-size: 11px; color: var(--text-muted);">${thread.time}</span>
+        </div>
+        <h4 style="margin: 0 0 8px 0; font-size: 14px; font-weight: bold; color: #fff;">${thread.title}</h4>
+        <p style="margin: 0 0 10px 0; font-size: 12px; color: var(--text-muted); line-height: 1.4; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden;">
+          ${thread.content}
+        </p>
+        <div style="display: flex; justify-content: space-between; align-items: center; font-size: 11px;">
+          <span style="color: var(--accent-cyan); display: flex; align-items: center; gap: 4px;">
+            <span>${thread.authorAvatar}</span>
+            <strong>${thread.author}</strong>
+          </span>
+          <span style="color: var(--text-muted);">${thread.replies.length} отв.</span>
+        </div>
+      `;
+
+      card.onclick = () => {
+        openForumThread(thread.id);
+      };
+
+      container.appendChild(card);
+    });
+  }
+
+  function openForumThread(threadId) {
+    state.activeThreadId = threadId;
+    
+    document.getElementById("forum-threads-list-pane").classList.add("hidden");
+    document.getElementById("forum-single-thread-pane").classList.remove("hidden");
+    document.getElementById("forum-new-thread-pane").classList.add("hidden");
+
+    const thread = forumThreads.find(t => t.id === threadId);
+    if (!thread) return;
+
+    document.getElementById("forum-post-title").textContent = thread.title;
+    document.getElementById("forum-post-content").textContent = thread.content;
+    document.getElementById("forum-post-author").textContent = thread.author;
+    document.getElementById("forum-post-avatar").textContent = thread.authorAvatar;
+    document.getElementById("forum-post-time").textContent = thread.time;
+
+    renderForumReplies();
+  }
+
+  function renderForumReplies() {
+    const container = document.getElementById("forum-replies-container");
+    if (!container) return;
+
+    container.innerHTML = "";
+    const thread = forumThreads.find(t => t.id === state.activeThreadId);
+    if (!thread) return;
+
+    thread.replies.forEach(rep => {
+      const card = document.createElement("div");
+      card.className = "forum-reply-card";
+      card.innerHTML = `
+        <div style="display: flex; align-items: center; gap: 8px; margin-bottom: 6px;">
+          <span style="font-size:16px;">${rep.avatar}</span>
+          <strong style="font-size:12.5px; color:#fff;">${rep.author}</strong>
+          <span style="font-size:10px; color:var(--text-muted); margin-left: auto;">${rep.time || 'только что'}</span>
+        </div>
+        <p style="margin: 0; font-size: 13px; color: var(--text-color); line-height: 1.5;">${rep.content}</p>
+      `;
+      container.appendChild(card);
+      applyWikiLinks(card);
+    });
+  }
+
+  function submitForumReply() {
+    const input = document.getElementById("forum-reply-input");
+    if (!input || input.value.trim() === "") return;
+
+    const thread = forumThreads.find(t => t.id === state.activeThreadId);
+    if (!thread) return;
+
+    thread.replies.push({
+      author: state.userProfile.username + " (Вы)",
+      avatar: state.userProfile.avatar,
+      content: input.value,
+      time: "только что"
+    });
+
+    input.value = "";
+    renderForumReplies();
+    showToast("Ответ опубликован!");
+  }
+
+  function submitNewForumThread() {
+    const title = document.getElementById("new-thread-title").value;
+    const cat = document.getElementById("new-thread-category").value;
+    const content = document.getElementById("new-thread-content").value;
+
+    const newThread = {
+      id: "thread_" + (forumThreads.length + 1),
+      title: title,
+      category: cat,
+      author: state.userProfile.username,
+      authorAvatar: state.userProfile.avatar,
+      content: content,
+      time: "только что",
+      replies: []
+    };
+
+    forumThreads.unshift(newThread);
+    
+    const postCount = parseInt(safeStorage.getItem("medstudy_forum_posts_count") || "0") + 1;
+    safeStorage.setItem("medstudy_forum_posts_count", postCount);
+    
+    unlockAchievement("forum_contributor");
+    syncSocialStats();
+
+    document.getElementById("forum-new-thread-pane").classList.add("hidden");
+    document.getElementById("forum-threads-list-pane").classList.remove("hidden");
+    
+    renderForumThreads();
+    showToast("Тема успешно создана!");
+
+    simulateForumAutoReply(newThread.id, title, content);
+  }
+
+  function simulateForumAutoReply(threadId, qTitle, qContent) {
+    const delay = 4000 + Math.random() * 3000;
+    
+    setTimeout(() => {
+      const thread = forumThreads.find(t => t.id === threadId);
+      if (!thread) return;
+
+      const botPool = [
+        { author: "Иван_Кардио", avatar: "🫀", text: "🫀 Отличный академический вопрос! Если оценивать патофизиологические аспекты, здесь ведущую роль играет гемодинамическая разгрузка миокарда и регуляция тонуса сосудов. На практике мы всегда следим за балансом электролитов (особенно K+ и Mg2+)." },
+        { author: "Мария_Нейро", avatar: "🧠", text: "🧠 С неврологической точки зрения, крайне важно помнить про рефлекторную дугу и автономную регуляцию внутренних органов посредством блуждающего нерва и симпатического ствола." },
+        { author: "Кирилл_Фарма", avatar: "💊", text: "💊 Как фармаколог, добавлю: обязательно проверяйте синергизм и антагонизм при одновременном назначении препаратов! Печеночный метаболизм CYP3A4 может сильно менять концентрацию лекарства." },
+        { author: "Аня_Склиф", avatar: "🩺", text: "🩺 Как реаниматолог скажу: в острой фазе на первом месте - обеспечение проходимости дыхательных путей и стабилизация КОС (газы крови). Поддерживаю мнение коллег!" }
+      ];
+
+      const bot = botPool[Math.floor(Math.random() * botPool.length)];
+      
+      thread.replies.push({
+        author: bot.author,
+        avatar: bot.avatar,
+        content: bot.text + `\n\nВ качестве рекомендации советую перечитать главу учебника или воспользоваться разделом калькуляторов в панели меню!`,
+        time: "1 мин назад"
+      });
+
+      if (state.activeThreadId === threadId) {
+        renderForumReplies();
+      }
+      
+      renderForumThreads();
+      showToast(`💬 Новый ответ на форуме от ${bot.author}!`);
+    }, delay);
+  }
+
+  function simulateSystemMessage(text) {
+    const activeFriendId = state.activeFriendId || "sklif_anya";
+    const friend = friendsList.find(f => f.id === activeFriendId);
+    if (!friend) return;
+    
+    friend.chatHistory.push({
+      sender: "received",
+      text: `⚙️ <strong>Системное сообщение:</strong> ${text}`,
+      time: getFormattedTime()
+    });
+    
+    if (state.activeFriendId === activeFriendId) {
+      renderChatMessages();
+    }
   }
 
   // Run the initialization
